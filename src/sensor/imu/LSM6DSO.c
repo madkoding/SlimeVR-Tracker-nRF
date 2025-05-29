@@ -18,6 +18,9 @@ static bool use_ext_fifo = false;
 
 static float freq_scale = 1;  // ODR is scaled by INTERNAL_FREQ_FINE
 
+// Variable global para almacenar el tipo de sensor detectado
+static uint8_t detected_sensor_type = 0;
+
 LOG_MODULE_REGISTER(LSM6DSO, LOG_LEVEL_DBG);
 
 int lsm6dso_init(
@@ -29,7 +32,28 @@ int lsm6dso_init(
 ) {
 	// setup interface for SPI
 	sensor_interface_spi_configure(SENSOR_INTERFACE_DEV_IMU, MHZ(10), 0);
-	int err = ssi_reg_write_byte(
+
+	// Read WHO_AM_I register to detect sensor type (LSM6DSR vs LSM6DSO)
+	uint8_t who_am_i;
+	int err = ssi_reg_read_byte(SENSOR_INTERFACE_DEV_IMU, LSM6DSO_WHO_AM_I, &who_am_i);
+	if (err) {
+		LOG_ERR("Failed to read WHO_AM_I register");
+		return err;
+	}
+
+	detected_sensor_type = who_am_i;
+	if (who_am_i == LSM6DSR_WHO_AM_I_VALUE) {
+		LOG_INF("Detected LSM6DSR sensor (WHO_AM_I: 0x%02X)", who_am_i);
+	} else if (who_am_i == LSM6DSO_WHO_AM_I_VALUE) {
+		LOG_INF("Detected LSM6DSO sensor (WHO_AM_I: 0x%02X)", who_am_i);
+	} else {
+		LOG_WRN(
+			"Unknown sensor type (WHO_AM_I: 0x%02X), proceeding with LSM6DSO defaults",
+			who_am_i
+		);
+	}
+
+	err = ssi_reg_write_byte(
 		SENSOR_INTERFACE_DEV_IMU,
 		LSM6DSO_CTRL3,
 		0x74
@@ -328,8 +352,8 @@ uint16_t lsm6dso_fifo_read(uint8_t* data, uint16_t len) {
 
 uint8_t lsm6dso_setup_WOM(void) {  // TODO: should be off by the time WOM will be setup
 	//	ssi_reg_write_byte(SENSOR_INTERFACE_DEV_IMU, LSM6DSO_CTRL1, ODR_OFF); // set
-	//accel off 	ssi_reg_write_byte(SENSOR_INTERFACE_DEV_IMU, LSM6DSO_CTRL2, ODR_OFF); //
-	//set gyro off
+	// accel off 	ssi_reg_write_byte(SENSOR_INTERFACE_DEV_IMU, LSM6DSO_CTRL2,
+	// ODR_OFF); // set gyro off
 
 	int err = ssi_reg_write_byte(
 		SENSOR_INTERFACE_DEV_IMU,
@@ -341,12 +365,24 @@ uint8_t lsm6dso_setup_WOM(void) {  // TODO: should be off by the time WOM will b
 		LSM6DSO_CTRL6,
 		DSO_OP_MODE_XL_NP
 	);  // set accel perf mode
+
+	// Configure ULP bit based on detected sensor type
+	uint8_t ctrl5_value;
+	if (detected_sensor_type == LSM6DSR_WHO_AM_I_VALUE) {
+		// LSM6DSR requires ULP bit to be 0
+		ctrl5_value = 0x00;
+		LOG_DBG("LSM6DSR detected: setting CTRL5 ULP bit to 0");
+	} else {
+		// LSM6DSO and other sensors use ULP bit = 1 (0x80)
+		ctrl5_value = 0x80;
+		LOG_DBG("LSM6DSO or compatible detected: setting CTRL5 ULP bit to 1");
+	}
+
 	err |= ssi_reg_write_byte(
 		SENSOR_INTERFACE_DEV_IMU,
 		LSM6DSO_CTRL5,
-		0x80
-	);  // enable accel ULP // TODO: for LSM6DSR/ISM330DHCX this bit may be required to
-		// be 0
+		ctrl5_value
+	);  // configure accel ULP based on sensor type
 	err |= ssi_reg_write_byte(
 		SENSOR_INTERFACE_DEV_IMU,
 		LSM6DSO_CTRL8,
