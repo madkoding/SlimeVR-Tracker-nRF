@@ -330,15 +330,15 @@ uint16_t lsm6dso_fifo_read(uint8_t* data, uint16_t len) {
 			count = limit;
 		}
 
-		// Use interval-based reading to prevent buffer overflow
-		uint16_t bytes_to_read = count * PACKET_SIZE;
-		err |= ssi_burst_read_interval(
-			SENSOR_INTERFACE_DEV_IMU,
-			LSM6DSO_FIFO_DATA_OUT_TAG,
-			data,
-			bytes_to_read,
-			240
-		);  // Read FIFO data in 240-byte intervals
+		// Read FIFO data using single burst read
+		for (int i = 0; i < count; i++) {
+			err |= ssi_burst_read(
+				SENSOR_INTERFACE_DEV_IMU,
+				LSM6DSO_FIFO_DATA_OUT_TAG,
+				&data[i * PACKET_SIZE],
+				PACKET_SIZE
+			);
+		}
 
 		if (err) {
 			LOG_ERR("Communication error");
