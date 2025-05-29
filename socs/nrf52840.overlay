@@ -5,7 +5,7 @@
 		zephyr,memory-region = "RETAINED_MEM";
 		status = "okay";
 
-		retainedmem0: retainedmem {
+		retainedmem0: retainedmem0 {
 			compatible = "zephyr,retained-ram";
 			status = "okay";
 		};
@@ -17,7 +17,7 @@
 		zephyr,memory-region = "DFU_DBL_RESET_MEM";
 		status = "okay";
 
-		retainedmem {
+		retainedmem1: retainedmem1 {
 			compatible = "zephyr,retained-ram";
 			status = "okay";
 		};
