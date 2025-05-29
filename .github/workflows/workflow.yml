@@ -69,6 +69,22 @@ jobs:
         with:
           path: zephyr-workspace/SlimeNRF-CI
 
+      - name: 🔄 Cache APT packages
+        uses: actions/cache@v3
+        with:
+          path: /var/cache/apt/archives
+          key: ${{ runner.os }}-apt-${{ hashFiles('**/workflow.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-apt-
+
+      - name: 🔄 Cache Python virtual environment
+        uses: actions/cache@v3
+        with:
+          path: ~/.venv
+          key: ${{ runner.os }}-venv-${{ hashFiles('zephyr-workspace/zephyr/scripts/requirements.txt', '**/workflow.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-venv-
+
       - name: 🧰 Install Dependencies + West
         run: |
           sudo apt-get update && sudo apt install --no-install-recommends \
@@ -76,7 +92,9 @@ jobs:
             wget python3-dev python3-pip python3-setuptools python3-tk \
             python3-wheel python3-venv xz-utils file make gcc gcc-multilib \
             g++-multilib libsdl2-dev libmagic1
-          python3 -m venv ~/.venv
+          if [ ! -d ~/.venv ]; then
+            python3 -m venv ~/.venv
+          fi
           source ~/.venv/bin/activate
           echo "PATH=$PATH" >> $GITHUB_ENV
           pip3 install west ninja
@@ -84,23 +102,34 @@ jobs:
       - name: 🔄 Cache Zephyr SDK
         uses: actions/cache@v3
         with:
-          path: ${{ env.HOME }}/zephyr-sdk-0.17.0
+          path: ~/zephyr-sdk-0.17.0
           key: ${{ runner.os }}-zephyr-sdk-v0.17.0
           restore-keys: |
             ${{ runner.os }}-zephyr-sdk-
 
       - name: 🪁 Install Zephyr SDK
         run: |
-          if [ ! -d "${HOME}/zephyr-sdk-0.17.0" ]; then
+          if [ ! -d "~/zephyr-sdk-0.17.0" ]; then
             wget -q https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v0.17.0/zephyr-sdk-0.17.0_linux-x86_64_minimal.tar.xz
-            tar xf zephyr-sdk-0.17.0_linux-x86_64_minimal.tar.xz -C $HOME
-            $HOME/zephyr-sdk-0.17.0/setup.sh -c -t arm-zephyr-eabi
+            tar xf zephyr-sdk-0.17.0_linux-x86_64_minimal.tar.xz -C ~
+            ~/zephyr-sdk-0.17.0/setup.sh -c -t arm-zephyr-eabi
           fi
 
       - name: 📂 Cloning Triggered Repository/Branch
         run: |
           cd zephyr-workspace
           git clone --single-branch --recurse-submodules -b $GITHUB_REF_NAME $GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git
+
+      - name: 🔄 Cache West workspace
+        uses: actions/cache@v3
+        with:
+          path: |
+            zephyr-workspace/.west
+            zephyr-workspace/zephyr
+            zephyr-workspace/modules
+          key: ${{ runner.os }}-west-${{ hashFiles('zephyr-workspace/SlimeNRF-CI/west.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-west-
 
       - name: ♻️ Initialize Zephyr Workspace
         run: |
@@ -113,18 +142,20 @@ jobs:
       - name: 🔄 Cache pip packages
         uses: actions/cache@v3
         with:
-          path: ${{ env.HOME }}/.cache/pip
+          path: ~/.cache/pip
           key: ${{ runner.os }}-pip-${{ hashFiles('zephyr-workspace/zephyr/scripts/requirements.txt') }}
           restore-keys: |
             ${{ runner.os }}-pip-
 
       - name: 🐍 Install Python Dependencies
         run: |
+          source ~/.venv/bin/activate
           cd zephyr-workspace
           pip3 install -r zephyr/scripts/requirements.txt
 
       - name: 🔨 Build SlimeVR-Tracker - ${{ matrix.boards.boardname }}
         run: |
+          source ~/.venv/bin/activate
           cd zephyr-workspace
           find='.dt_size\s=\sDT_REG_SIZE(DT_PARENT(node_id))}'
           replace='.dt_size = DT_REG_SIZE(DT_PARENT(node_id))},'

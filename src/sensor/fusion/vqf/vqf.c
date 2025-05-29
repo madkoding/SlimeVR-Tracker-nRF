@@ -20,11 +20,10 @@
 	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 	THE SOFTWARE.
 */
-#include "../src/vqf.h"  // conflicting with vqf.h in local path
+#include "vqf.h"  // VQF library header (from vqf-c/src via CMake include)
 
 #include <stdbool.h>  // Required for bool type in VQF headers
 
-#include "../vqf/vqf.h"  // conflicting with vqf.h in vqf-c
 #include "globals.h"
 #include "sensor/sensors_enum.h"
 #include "util.h"
@@ -32,6 +31,9 @@
 #ifndef DEG_TO_RAD
 #define DEG_TO_RAD (M_PI / 180.0f)
 #endif
+
+// Include local VQF interface header after VQF library
+#include "sensor/fusion/vqf/vqf.h"
 
 static uint8_t imu_id;
 
