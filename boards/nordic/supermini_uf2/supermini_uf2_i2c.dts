@@ -126,9 +126,9 @@
 &i2c0 {
 	compatible = "nordic,nrf-twim";
 	status = "okay";
-	zephyr,concat-buf-size = <128>;// Optimizado para menor consumo y precisión
-	zephyr,flash-buf-max-size = <128>;// Optimizado para menor consumo y precisión
-	clock-frequency = <I2C_BITRATE_STANDARD>;// 100kHz para máxima precisión y batería
+	zephyr,concat-buf-size = <4096>;// Aumentado para manejar más paquetes FIFO LSM6DSO
+	zephyr,flash-buf-max-size = <4096>;// Aumentado para manejar más paquetes FIFO LSM6DSO
+	clock-frequency = <I2C_BITRATE_STANDARD>;// 100kHz - Máximo ahorro energético
 	pinctrl-0 = <&i2c0_default>;
 	pinctrl-1 = <&i2c0_sleep>;
 	pinctrl-names = "default", "sleep";
