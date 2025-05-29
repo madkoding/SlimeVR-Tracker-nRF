@@ -1,0 +1,153 @@
+// XIAO BLE nRF52840 - SPI Configuration Overlay
+// Este overlay configura la XIAO BLE para usar comunicación SPI con sensores IMU
+
+&pinctrl {
+	// Configuración SPI1 para XIAO BLE
+	spi1_default: spi1_default {
+		group1 {
+			psels = <NRF_PSEL(SPIM_MISO, 1, 14)>,// Pin 7 (P1.14) - MISO
+			<NRF_PSEL(SPIM_MOSI, 1, 15)>,// Pin 10 (P1.15) - MOSI
+			<NRF_PSEL(SPIM_SCK, 1, 13)>;// Pin 8 (P1.13) - SCK
+		};
+	};
+	
+	spi1_sleep: spi1_sleep {
+		group1 {
+			psels = <NRF_PSEL(SPIM_MISO, 1, 14)>,// Pin 7 (P1.14) - MISO
+			<NRF_PSEL(SPIM_MOSI, 1, 15)>,// Pin 10 (P1.15) - MOSI
+			<NRF_PSEL(SPIM_SCK, 1, 13)>;// Pin 8 (P1.13) - SCK
+			low-power-enable;
+		};
+	};
+	
+	// Configuración PWM (heredada del overlay base)
+	pwm1_default: pwm1_default {
+		group1 {
+			psels = <NRF_PIN_DISCONNECTED>;
+		};
+	};
+	
+	pwm1_sleep: pwm1_sleep {
+		group1 {
+			psels = <NRF_PIN_DISCONNECTED>;
+			low-power-enable;
+		};
+	};
+};
+
+// Deshabilitar I2C (no usado en configuración SPI)
+&i2c0 {
+	status = "disabled";
+};
+
+&i2c1 {
+	status = "disabled";
+};
+
+// Configuración SPI1
+&spi1 {
+	compatible = "nordic,nrf-spim";
+	status = "okay";
+	max-frequency = <DT_FREQ_M(8)>;
+	pinctrl-0 = <&spi1_default>;
+	pinctrl-1 = <&spi1_sleep>;
+	pinctrl-names = "default", "sleep";
+	cs-gpios = <&gpio0 5 GPIO_ACTIVE_LOW>;// Pin 5 (P0.05) - CS
+	
+	imu_spi: imu_spi@0 {
+		compatible = "vnd,spi-device";
+		spi-max-frequency = <DT_FREQ_M(8)>;
+		label = "imu-spi";
+		reg = <0>;
+	};
+};
+
+// Configuración PWM para LEDs internos
+&pwm0_default {
+	group1 {
+		psels = <NRF_PSEL(PWM_OUT0, 0, 26)>,// LED Rojo
+		<NRF_PSEL(PWM_OUT1, 0, 30)>,// LED Verde
+		<NRF_PSEL(PWM_OUT2, 0, 6)>;// LED Azul
+		nordic,drive-mode = <NRF_DRIVE_D0S1>;
+		nordic,invert;
+	};
+};
+
+&pwm0_sleep {
+	group1 {
+		psels = <NRF_PSEL(PWM_OUT0, 0, 26)>,// LED Rojo
+		<NRF_PSEL(PWM_OUT1, 0, 30)>,// LED Verde
+		<NRF_PSEL(PWM_OUT2, 0, 6)>;// LED Azul
+	};
+};
+
+/ {
+	// LEDs PWM internos
+	pwmleds {
+		pwm_led0: pwm_led_0 {
+			pwms = <&pwm0 0 PWM_MSEC(1) PWM_POLARITY_INVERTED>;
+		};
+		pwm_led1: pwm_led_1 {
+			pwms = <&pwm0 1 PWM_MSEC(1) PWM_POLARITY_INVERTED>;
+		};
+		pwm_led2: pwm_led_2 {
+			pwms = <&pwm0 2 PWM_MSEC(1) PWM_POLARITY_INVERTED>;
+		};
+	};
+	
+	// Botón SW0
+	buttons {
+		compatible = "gpio-keys";
+		button0: button_0 {
+			gpios = <&gpio0 2 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;// Pin 0 (P0.02)
+			label = "Push button switch 0";
+		};
+	};
+	
+	// Aliases
+	aliases {
+		sw0 = &button0;
+		pwm-led1 = &pwm_led1;
+		pwm-led2 = &pwm_led2;
+	};
+	
+	// Clock PWM (si se necesita)
+	pwmclock: pwmclock {
+		compatible = "pwm-clock";
+		#clock-cells = <1>;
+		pwms = <&pwm1 0 PWM_HZ(32768) PWM_POLARITY_NORMAL>;
+	};
+	
+	// Monitor de batería
+	battery-divider {
+		compatible = "voltage-divider";
+		status = "okay";
+		io-channels = <&adc 7>;
+		output-ohms = <510000>;
+		full-ohms = <(1000000+510000)>;
+		power-gpios = <&gpio0 14 (GPIO_OPEN_DRAIN|GPIO_ACTIVE_LOW)>;
+	};
+	
+	// Configuración de usuario para interrupciones
+	zephyr,user {
+		int0-gpios = <&gpio0 3 0>;// Pin 1 (P0.03) para interrupción del IMU
+		// Nota: P0.17 referenciado en overlay I2C no está disponible externamente en XIAO BLE
+	};
+};
+
+// Configuración PWM1
+&pwm1 {
+	status = "okay";
+	pinctrl-0 = <&pwm1_default>;
+	pinctrl-1 = <&pwm1_sleep>;
+	pinctrl-names = "default", "sleep";
+};
+
+// Deshabilitar módulos no utilizados para ahorrar energía
+&cryptocell {
+	status = "disabled";
+};
+
+&nfct {
+	status = "disabled";
+};
