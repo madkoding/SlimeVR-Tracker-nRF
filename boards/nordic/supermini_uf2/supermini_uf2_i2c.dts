@@ -128,7 +128,7 @@
 	status = "okay";
 	zephyr,concat-buf-size = <1024>;// Increased buffer size to handle higher data throughput and prevent FIFO overflow
 	zephyr,flash-buf-max-size = <1024>;// Increased buffer size for better I2C transfer handling
-	clock-frequency = <I2C_BITRATE_STANDARD>;// 100kHz is the standard I2C speed, can be changed to I2C_BITRATE_FAST (400kHz) or I2C_BITRATE_HIGH (3.4MHz) if needed
+	clock-frequency = <I2C_BITRATE_FAST>;// 400kHz is the fast I2C speed, better for high-throughput sensors to avoid FIFO overflow
 	pinctrl-0 = <&i2c0_default>;
 	pinctrl-1 = <&i2c0_sleep>;
 	pinctrl-names = "default", "sleep";
