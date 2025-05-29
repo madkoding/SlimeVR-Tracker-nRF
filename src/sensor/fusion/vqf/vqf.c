@@ -22,6 +22,8 @@
 */
 #include "../src/vqf.h"  // conflicting with vqf.h in local path
 
+#include <stdbool.h>  // Required for bool type in VQF headers
+
 #include "../vqf/vqf.h"  // conflicting with vqf.h in vqf-c
 #include "globals.h"
 #include "sensor/sensors_enum.h"
