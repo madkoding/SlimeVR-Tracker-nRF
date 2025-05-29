@@ -150,10 +150,10 @@
 	pinctrl-1 = <&i2c0_sleep>;
 	pinctrl-names = "default", "sleep";
 	
-	imu: imu@0 {// any address out of range (00, 7f, etc. will search all addresses and stored address first if available, specify an address here to search first otherwise
+	imu: imu@6b {// LSM6DSR I2C address is 0x6B (when SDO is pulled high, 0x6A when low)
 		compatible = "i2c-device";
 		label = "imu";
-		reg = <0>;
+		reg = <0x6b>;
 	};
 	
 	mag: mag@0 {

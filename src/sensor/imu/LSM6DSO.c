@@ -30,8 +30,13 @@ int lsm6dso_init(
 	float* accel_actual_time,
 	float* gyro_actual_time
 ) {
-	// setup interface for SPI
-	sensor_interface_spi_configure(SENSOR_INTERFACE_DEV_IMU, MHZ(10), 0);
+	// Try to configure SPI interface first, if it fails, assume I2C
+	int spi_ret = sensor_interface_spi_configure(SENSOR_INTERFACE_DEV_IMU, MHZ(10), 0);
+	if (spi_ret == 0) {
+		LOG_INF("Using SPI interface for LSM6D sensor");
+	} else {
+		LOG_INF("SPI interface not available, using I2C interface for LSM6D sensor");
+	}
 
 	// Read WHO_AM_I register to detect sensor type (LSM6DSR vs LSM6DSO)
 	uint8_t who_am_i;
