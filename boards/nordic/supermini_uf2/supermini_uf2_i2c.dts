@@ -126,17 +126,17 @@
 &i2c0 {
 	compatible = "nordic,nrf-twim";
 	status = "okay";
-	zephyr,concat-buf-size = <4096>;// Aumentado para manejar más paquetes FIFO LSM6DSO
-	zephyr,flash-buf-max-size = <4096>;// Aumentado para manejar más paquetes FIFO LSM6DSO
-	clock-frequency = <I2C_BITRATE_STANDARD>;// 100kHz - Máximo ahorro energético
+	zephyr,concat-buf-size = <255>;
+	zephyr,flash-buf-max-size = <255>;
+	clock-frequency = <I2C_BITRATE_STANDARD>;
 	pinctrl-0 = <&i2c0_default>;
 	pinctrl-1 = <&i2c0_sleep>;
 	pinctrl-names = "default", "sleep";
 	
-	imu: imu@6b {// LSM6DSR I2C address is 0x6B (when SDO is pulled high, 0x6A when low)
+	imu: imu@0 {// any address out of range (00, 7f, etc. will search all addresses and stored address first if available, specify an address here to search first otherwise
 		compatible = "i2c-device";
 		label = "imu";
-		reg = <0x6b>;
+		reg = <0>;
 	};
 	
 	mag: mag@0 {
