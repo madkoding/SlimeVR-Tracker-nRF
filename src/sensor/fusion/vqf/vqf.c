@@ -20,10 +20,14 @@
 	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 	THE SOFTWARE.
 */
-#include "vqf.h"  // VQF library header (from vqf-c/src via CMake include)
 
-#include <stdbool.h>  // Required for bool type in VQF headers
+#include <math.h>
+#include <stdbool.h>
+#include <string.h>
 
+// Include VQF library header (from vqf-c/src via CMake include)
+// Use specific path to avoid naming conflicts with local header
+#include "../../../../vqf-c/src/vqf.h"
 #include "globals.h"
 #include "sensor/sensors_enum.h"
 #include "util.h"
