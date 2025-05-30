@@ -72,7 +72,8 @@ jobs:
       - name: 🔄 Cache APT packages
         uses: actions/cache@v3
         with:
-          path: /var/cache/apt/archives
+          path: |
+            /var/cache/apt/archives/*.deb
           key: ${{ runner.os }}-apt-${{ hashFiles('**/workflow.yml') }}
           restore-keys: |
             ${{ runner.os }}-apt-
