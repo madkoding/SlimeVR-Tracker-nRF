@@ -1,0 +1,48 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug SlimeVR (J-Link)",
+      "type": "cortex-debug",
+      "request": "launch",
+      "cwd": "${workspaceFolder}",
+      "executable": "${workspaceFolder}/build/zephyr/zephyr.elf",
+      "servertype": "jlink",
+      "device": "nRF52840_xxAA",
+      "interface": "swd",
+      "serverpath": "/Applications/SEGGER/JLink/JLinkGDBServerCLExe",
+      "armToolchainPath": "${env:ZEPHYR_SDK_INSTALL_DIR}/arm-zephyr-eabi/bin",
+      "svdFile": "${workspaceFolder}/../nrf/modules/hal/nordic/nrfx/mdk/nrf52840.svd",
+      "runToEntryPoint": "main",
+      "showDevDebugOutput": "raw",
+      "preLaunchTask": "Build SlimeVR Tracker"
+    },
+    {
+      "name": "Debug SlimeVR (OpenOCD)",
+      "type": "cortex-debug",
+      "request": "launch",
+      "cwd": "${workspaceFolder}",
+      "executable": "${workspaceFolder}/build/zephyr/zephyr.elf",
+      "servertype": "openocd",
+      "configFiles": ["interface/jlink.cfg", "target/nrf52.cfg"],
+      "armToolchainPath": "${env:ZEPHYR_SDK_INSTALL_DIR}/arm-zephyr-eabi/bin",
+      "svdFile": "${workspaceFolder}/../nrf/modules/hal/nordic/nrfx/mdk/nrf52840.svd",
+      "runToEntryPoint": "main",
+      "showDevDebugOutput": "raw",
+      "preLaunchTask": "Build SlimeVR Tracker"
+    },
+    {
+      "name": "Attach to Running Target",
+      "type": "cortex-debug",
+      "request": "attach",
+      "cwd": "${workspaceFolder}",
+      "executable": "${workspaceFolder}/build/zephyr/zephyr.elf",
+      "servertype": "jlink",
+      "device": "nRF52840_xxAA",
+      "interface": "swd",
+      "serverpath": "/Applications/SEGGER/JLink/JLinkGDBServerCLExe",
+      "armToolchainPath": "${env:ZEPHYR_SDK_INSTALL_DIR}/arm-zephyr-eabi/bin",
+      "svdFile": "${workspaceFolder}/../nrf/modules/hal/nordic/nrfx/mdk/nrf52840.svd"
+    }
+  ]
+}

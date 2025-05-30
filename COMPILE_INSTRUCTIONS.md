@@ -24,6 +24,70 @@
 - ✅ Toolchain ARM configurado
 - ✅ CMake package registrado
 
+## ✅ Entorno de Desarrollo Completamente Configurado
+
+### Zephyr SDK Instalado
+- ✅ Zephyr SDK 0.16.8 instalado en: `~/zephyr-sdk-0.16.8`
+- ✅ Todas las dependencias de sistema instaladas
+- ✅ Variables de entorno configuradas
+- ✅ VS Code configurado con extensiones para desarrollo embedded
+
+### Script de Compilación Automático
+Se ha creado un script de conveniencia para compilar el proyecto:
+
+```bash
+# Hacer el script ejecutable (solo la primera vez)
+chmod +x build.sh
+
+# Compilar con placa por defecto (nrf52840dk_nrf52840)
+./build.sh
+
+# Compilar para una placa específica
+./build.sh xiao_ble_nrf52840
+
+# Limpiar, compilar y programar
+./build.sh -c -f nrf52840dongle_nrf52840
+
+# Ver todas las opciones disponibles
+./build.sh --help
+```
+
+### Configuración de VS Code
+Se han configurado las siguientes características en VS Code:
+
+1. **Tasks (Ctrl+Shift+P > Tasks: Run Task)**:
+   - Build SlimeVR Tracker
+   - Build for specific board
+   - Clean Build
+   - Flash to Device
+   - Update West Dependencies
+
+2. **Launch Configurations** para debugging:
+   - Debug SlimeVR (J-Link)
+   - Debug SlimeVR (OpenOCD)
+   - Attach to Running Target
+
+3. **IntelliSense** configurado para:
+   - Autocompletado de código C/C++
+   - Navegación de símbolos
+   - Detección de errores en tiempo real
+
+### Problemas Conocidos y Soluciones
+
+#### Error de Compilación: "retained_mem_nrf_ram_ctrl.c"
+Si encuentras errores relacionados con `retained_mem_nrf_ram_ctrl.c`, esto puede deberse a incompatibilidades entre versiones de Zephyr. Soluciones:
+
+1. **Verificar versión de Zephyr**: `west --version`
+2. **Limpiar build**: `rm -rf build` o usar `./build.sh -c`
+3. **Actualizar dependencias**: `west update`
+
+### Extensiones de VS Code Instaladas
+- ✅ C/C++ IntelliSense
+- ✅ CMake Tools
+- ✅ CMake Language Support
+- ✅ Cortex-Debug (para debugging ARM)
+- ✅ Serial Monitor
+
 ## Pasos para Compilar
 
 ### 1. Activar el Entorno Virtual

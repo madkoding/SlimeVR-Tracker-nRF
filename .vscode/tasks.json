@@ -1,0 +1,132 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Build SlimeVR Tracker",
+      "type": "shell",
+      "command": "west",
+      "args": ["build", "-p", "auto"],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared",
+        "showReuseMessage": true,
+        "clear": false
+      },
+      "problemMatcher": ["$gcc"],
+      "detail": "Compila el proyecto SlimeVR Tracker usando west build"
+    },
+    {
+      "label": "Build for specific board",
+      "type": "shell",
+      "command": "west",
+      "args": ["build", "-p", "auto", "-b", "${input:boardName}"],
+      "group": "build",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared",
+        "showReuseMessage": true,
+        "clear": false
+      },
+      "problemMatcher": ["$gcc"],
+      "detail": "Compila para una placa específica"
+    },
+    {
+      "label": "Clean Build",
+      "type": "shell",
+      "command": "west",
+      "args": ["build", "-t", "clean"],
+      "group": "build",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared"
+      },
+      "detail": "Limpia los archivos de compilación"
+    },
+    {
+      "label": "Flash to Device",
+      "type": "shell",
+      "command": "west",
+      "args": ["flash"],
+      "group": "build",
+      "dependsOn": "Build SlimeVR Tracker",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared"
+      },
+      "detail": "Programa el firmware compilado al dispositivo"
+    },
+    {
+      "label": "Update West Dependencies",
+      "type": "shell",
+      "command": "west",
+      "args": ["update"],
+      "group": "build",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared"
+      },
+      "detail": "Actualiza las dependencias del workspace de Zephyr"
+    },
+    {
+      "label": "Run in QEMU (x86)",
+      "type": "shell",
+      "command": "west",
+      "args": [
+        "build",
+        "-p",
+        "auto",
+        "-b",
+        "qemu_x86",
+        "&&",
+        "west",
+        "build",
+        "-t",
+        "run"
+      ],
+      "group": "test",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared"
+      },
+      "detail": "Compila y ejecuta en emulador QEMU para pruebas"
+    }
+  ],
+  "inputs": [
+    {
+      "id": "boardName",
+      "description": "Selecciona la placa objetivo",
+      "type": "pickString",
+      "options": [
+        "nrf52840dk_nrf52840",
+        "nrf52840dongle_nrf52840",
+        "nrf52dk_nrf52832",
+        "nrf5340dk_nrf5340_cpuapp",
+        "xiao_ble_nrf52840",
+        "xiao_ble_nrf52840_sense",
+        "supermini_uf2_nrf52840",
+        "slimenrf_r3_nrf52840_uf2",
+        "slimevrmini_p1_uf2_nrf52833",
+        "slimevrmini_p2_uf2_nrf52833",
+        "slimevrmini_p3r6_uf2_nrf52833",
+        "slimevrmini_p3r7_uf2_nrf52833"
+      ],
+      "default": "nrf52840dk_nrf52840"
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "configurations": [
+    {
+      "name": "SlimeVR nRF52840",
+      "includePath": [
+        "${workspaceFolder}/src/**",
+        "${workspaceFolder}/Fusion/**",
+        "${workspaceFolder}/vqf-c/src/**",
+        "${workspaceFolder}/../zephyr/include/**",
+        "${workspaceFolder}/../zephyr/arch/arm/include/**",
+        "${workspaceFolder}/../zephyr/drivers/include/**",
+        "${workspaceFolder}/../zephyr/subsys/bluetooth/include/**",
+        "${workspaceFolder}/../nrf/include/**",
+        "${workspaceFolder}/../nrf/modules/hal/nordic/nrfx/**",
+        "${workspaceFolder}/../nrf/modules/hal/nordic/nrfx/mdk/**",
+        "${workspaceFolder}/../modules/hal/cmsis/CMSIS/Core/Include/**",
+        "${workspaceFolder}/build/zephyr/include/generated/**",
+        "${workspaceFolder}/build/zephyr/include/**",
+        "/Users/madkoding/zephyr-sdk-0.16.8/arm-zephyr-eabi/arm-zephyr-eabi/include/**"
+      ],
+      "defines": [
+        "__ZEPHYR__=1",
+        "CONFIG_ARM=1",
+        "CONFIG_ARM_CORTEX_M=1",
+        "CONFIG_CPU_CORTEX_M4=1",
+        "CONFIG_SOC_NRF52840=1",
+        "CONFIG_BOARD_NRF52840DK_NRF52840=1",
+        "CONFIG_BT=1",
+        "CONFIG_BT_PERIPHERAL=1",
+        "CONFIG_NEWLIB_LIBC=1",
+        "NRF52840_XXAA=1",
+        "_FORTIFY_SOURCE=2"
+      ],
+      "compilerPath": "/Users/madkoding/zephyr-sdk-0.16.8/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc",
+      "cStandard": "c11",
+      "cppStandard": "c++17",
+      "intelliSenseMode": "gcc-arm",
+      "compileCommands": "${workspaceFolder}/build/compile_commands.json"
+    }
+  ],
+  "version": 4
+}
