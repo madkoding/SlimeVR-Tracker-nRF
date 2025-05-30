@@ -93,6 +93,34 @@ static void set_icm45686_optimized_params() {
 		= 2.142593f;  // best result from optimizer (based on accel noise: 0.1f)
 }
 
+static void set_lsm6dsr_optimized_params() {
+	// Optimized parameters for LSM6DSR - 6D Tracking (NO MAGNETOMETER)
+	// Focused on minimal drift with gyro+accel only fusion
+
+	// Accelerometer filtering - critical for gravity reference in 6D mode
+	params.tauAcc = 3.8f;  // More responsive for better pitch/roll correction
+
+	// Bias estimation parameters - CRITICAL for 6D tracking without mag correction
+	params.biasSigmaInit = 0.08f;  // Very low initial bias uncertainty (crucial for 6D)
+	params.biasForgettingTime = 120.0f;  // Faster thermal adaptation for 6D stability
+	params.biasClip = 1.8f;  // Conservative bias range without mag backup
+	params.biasSigmaMotion = 0.04f;  // Very low motion bias for 6D precision
+	params.biasVerticalForgettingFactor
+		= 0.012f;  // More aggressive for 6D vertical stability
+	params.biasSigmaRest = 0.002f;  // Ultra-precise rest bias for 6D drift minimization
+
+	// Rest detection - ULTRA SENSITIVE for 6D bias correction
+	params.restMinT = 0.8f;  // Shorter detection for frequent bias updates
+	params.restFilterTau = 0.4f;  // Fast rest detection for 6D responsiveness
+	params.restThGyr = 0.25f;  // Very tight gyro threshold for 6D precision
+	params.restThAcc = 0.06f;  // Ultra-tight accel threshold for micro-rest detection
+
+	// Disable magnetometer parameters (not used in 6D mode)
+	params.magDistRejectionEnabled = false;  // Disable mag processing
+	params.magCurrentTau = 0.0f;  // Disable mag filtering
+	params.magRefTau = 0.0f;  // Disable mag reference
+}
+
 static void set_params() {
 	// Start with VQF defaults
 	set_vqf_defaults();
@@ -119,13 +147,15 @@ static void set_params() {
 			params.restThAcc = 0.392f;
 			break;
 		case IMU_LSM6DSO:
-		case IMU_LSM6DSR:
 		case IMU_LSM6DSV:
-			// These sensors now inherit VQF defaults instead of ICM45686 optimizations
+			// These sensors inherit VQF defaults instead of ICM45686 optimizations
 			params.biasSigmaInit = 1.0f;
 			// params.biasClip = 2.0f;
 			params.restThGyr = 1.0f;
 			params.restThAcc = 0.192f;
+			break;
+		case IMU_LSM6DSR:  // Apply LSM6DSR-specific anti-drift optimizations
+			set_lsm6dsr_optimized_params();
 			break;
 		default:
 			// Other sensors inherit VQF defaults
