@@ -64,6 +64,5 @@
     "editor.insertSpaces": true
   },
   "nrf-connect.toolchain.path": "${nrf-connect.toolchain:2.9.0}",
-  "nrf-connect.topdir": "${nrf-connect.sdk:2.9.0}",
-  "sonarlint.pathToCompileCommands": "${workspaceFolder}/build/SlimeVR-Tracker-nRF/compile_commands.json"
+  "nrf-connect.topdir": "${nrf-connect.sdk:2.9.0}"
 }
