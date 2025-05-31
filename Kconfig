@@ -72,7 +72,7 @@ config USER_SHUTDOWN
 
 config USE_IMU_WAKE_UP
     bool "IMU wake up support"
-    default y
+    default n
     help
         Use IMU wake up state if IMU wake up is present.
 
@@ -91,7 +91,7 @@ config WOM_USE_DCDC
 
 config CONNECTION_TIMEOUT_DELAY
     int "Connection timeout delay (ms)"
-    default 300000
+    default 0
     depends on USER_SHUTDOWN
     help
         Connection timeout duration when receiver is not detected.
@@ -100,7 +100,7 @@ menu "Sensor power saving"
 
 config SENSOR_LP_TIMEOUT
     int "Sensor low power delay (ms)"
-    default 500
+    default 200
     help
         Low power timeout during no motion.
 
@@ -111,21 +111,21 @@ config SENSOR_USE_LOW_POWER_2
 
 config USE_IMU_TIMEOUT
     bool "Use IMU wake up state"
-    default y
+    default n
     depends on USE_IMU_WAKE_UP
     help
         Use IMU wake up state during no motion.
 
 config IMU_TIMEOUT_RAMP_MIN
     int "Sensor timeout minimum delay (ms)"
-    default 1000
+    default 2000
     depends on USE_IMU_TIMEOUT || SENSOR_USE_LOW_POWER_2
     help
         Minimum timeout during no motion.
 
 config IMU_TIMEOUT_RAMP_MAX
     int "Sensor timeout maximum delay (ms)"
-    default 15000
+    default 30000
     depends on USE_IMU_TIMEOUT || SENSOR_USE_LOW_POWER_2
     help
         Maximum timeout during no motion.
@@ -174,14 +174,14 @@ endmenu
 
 config SENSOR_ACCEL_ODR
     int "Accelerometer output data rate (Hz)"
-    default 200
+    default 100
     help
         Requested accelerometer output data rate. Actual rate will be raised to the nearest supported rate.
         A higher rate will increase the time to read and process sensor data.
 
 config SENSOR_GYRO_ODR
     int "Gyrometer output data rate (Hz)"
-    default 500
+    default 200
     help
         Requested gyrometer output data rate. Actual rate will be raised to the nearest supported rate.
         A higher rate will increase the time to read and process sensor data.

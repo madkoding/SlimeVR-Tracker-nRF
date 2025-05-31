@@ -27,7 +27,7 @@
 #include <nrfx_timer.h>
 
 // TODO: timer?
-#define LAST_RESET_LIMIT 10
+#define LAST_RESET_LIMIT 1000  // Aumentado significativamente para reconexión continua
 extern uint8_t last_reset;
 // TODO: move to esb/timer
 // extern const nrfx_timer_t m_timer;
