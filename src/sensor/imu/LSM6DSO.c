@@ -19,22 +19,8 @@ LOG_MODULE_REGISTER(LSM6DSO, LOG_LEVEL_DBG);
 
 int lsm6dso_init(
 	float clock_rate,
-	float	status = 0;
-	timeout = k_uptime_get() + 10;
-	while (!(status & 0x01) && k_uptime_get() < timeout) {  // Wait for XLDA
-		err |= ssi_reg_read_byte(SENSOR_INTERFACE_DEV_IMU, LSM6DSO_STATUS_REG, &status);
-		k_usleep(100);
-	}
-	status = 0;
-	timeout = k_uptime_get() + 10;
-	while (!(status & 0x01) && k_uptime_get() < timeout) {  // Wait for SENS_HUB_ENDOP
-		err |= ssi_reg_read_byte(
-			SENSOR_INTERFACE_DEV_IMU,
-			LSM6DSO_STATUS_MASTER_MAINPAGE,
-			&status
-		);
-		k_usleep(100);
-	}	float gyro_time,
+	float accel_time,
+	float gyro_time,
 	float* accel_actual_time,
 	float* gyro_actual_time
 ) {
@@ -334,8 +320,8 @@ uint16_t lsm6dso_fifo_read(uint8_t* data, uint16_t len) {
 
 uint8_t lsm6dso_setup_WOM(void) {  // TODO: should be off by the time WOM will be setup
 	//	ssi_reg_write_byte(SENSOR_INTERFACE_DEV_IMU, LSM6DSO_CTRL1, ODR_OFF); // set
-	//accel off 	ssi_reg_write_byte(SENSOR_INTERFACE_DEV_IMU, LSM6DSO_CTRL2, ODR_OFF); //
-	//set gyro off
+	// accel off 	ssi_reg_write_byte(SENSOR_INTERFACE_DEV_IMU, LSM6DSO_CTRL2,
+	// ODR_OFF); // set gyro off
 
 	int err = ssi_reg_write_byte(
 		SENSOR_INTERFACE_DEV_IMU,
@@ -395,7 +381,7 @@ uint8_t lsm6dso_setup_WOM(void) {  // TODO: should be off by the time WOM will b
 // External sensor setup and communication functions for LSM6DSO
 int lsm6dso_ext_setup(void) {
 	LOG_DBG("LSM6DSO: Setting up external sensor interface");
-	
+
 	// First, disable the sensor hub
 	int err = ssi_reg_write_byte(
 		SENSOR_INTERFACE_DEV_IMU,
@@ -406,49 +392,53 @@ int lsm6dso_ext_setup(void) {
 		LOG_ERR("Failed to switch to sensor hub registers: %d", err);
 		return err;
 	}
-	
+
 	err |= ssi_reg_write_byte(
 		SENSOR_INTERFACE_DEV_IMU,
 		LSM6DSO_MASTER_CONFIG,
 		0x00
 	);  // disable I2C master
-	
+
 	// Configure sensor hub timing
 	err |= ssi_reg_write_byte(
 		SENSOR_INTERFACE_DEV_IMU,
 		LSM6DSO_SLV0_CONFIG,
 		0x00
 	);  // reset slave 0 config
-	
+
 	// Switch back to normal registers
 	err |= ssi_reg_write_byte(
 		SENSOR_INTERFACE_DEV_IMU,
 		LSM6DSO_FUNC_CFG_ACCESS,
 		0x00
 	);  // switch to normal registers
-	
+
 	if (err) {
 		LOG_ERR("Failed to initialize sensor hub: %d", err);
 		return err;
 	}
-	
+
 	// Wait for configuration to settle
 	k_usleep(1000);
-	
+
 	sensor_interface_ext_configure(&sensor_ext_lsm6dso);
 	LOG_DBG("LSM6DSO: External sensor interface configured");
 	return 0;
 }
 
 int lsm6dso_ext_write(const uint8_t addr, const uint8_t* buf, uint32_t num_bytes) {
-	LOG_DBG("LSM6DSO: External write to addr 0x%02x, register 0x%02x, value 0x%02x", 
-		addr, buf[0], buf[1]);
-	
+	LOG_DBG(
+		"LSM6DSO: External write to addr 0x%02x, register 0x%02x, value 0x%02x",
+		addr,
+		buf[0],
+		buf[1]
+	);
+
 	if (num_bytes != 2) {
 		LOG_ERR("Unsupported write, num_bytes=%d", num_bytes);
 		return -1;
 	}
-	
+
 	// Check sensor hub availability
 	uint8_t func_cfg;
 	int err = ssi_reg_read_byte(
@@ -514,7 +504,7 @@ int lsm6dso_ext_write(const uint8_t addr, const uint8_t* buf, uint32_t num_bytes
 		LOG_ERR("Write timeout, status=0x%02x", status);
 		return -1;
 	}
-	
+
 	LOG_DBG("LSM6DSO: External write completed successfully");
 	return err;
 }
@@ -526,11 +516,19 @@ int lsm6dso_ext_write_read(
 	void* read_buf,
 	size_t num_read
 ) {
-	LOG_DBG("LSM6DSO: External read from addr 0x%02x, register 0x%02x, %d bytes", 
-		addr, ((const uint8_t*)write_buf)[0], num_read);
-	
+	LOG_DBG(
+		"LSM6DSO: External read from addr 0x%02x, register 0x%02x, %d bytes",
+		addr,
+		((const uint8_t*)write_buf)[0],
+		num_read
+	);
+
 	if (num_write != 1 || num_read < 1 || num_read > 8) {
-		LOG_ERR("Unsupported write_read, num_write=%d, num_read=%d", num_write, num_read);
+		LOG_ERR(
+			"Unsupported write_read, num_write=%d, num_read=%d",
+			num_write,
+			num_read
+		);
 		return -1;
 	}
 	// Configure transaction and begin one-shot (similar to LSM6DSV implementation)
@@ -608,13 +606,15 @@ int lsm6dso_ext_write_read(
 		LSM6DSO_FUNC_CFG_ACCESS,
 		0x00
 	);  // switch to normal registers
-	
-	LOG_DBG("LSM6DSO: External read completed, data: %02x %02x %02x %02x...", 
-		((uint8_t*)read_buf)[0], 
+
+	LOG_DBG(
+		"LSM6DSO: External read completed, data: %02x %02x %02x %02x...",
+		((uint8_t*)read_buf)[0],
 		num_read > 1 ? ((uint8_t*)read_buf)[1] : 0,
 		num_read > 2 ? ((uint8_t*)read_buf)[2] : 0,
-		num_read > 3 ? ((uint8_t*)read_buf)[3] : 0);
-	
+		num_read > 3 ? ((uint8_t*)read_buf)[3] : 0
+	);
+
 	return err;
 }
 
