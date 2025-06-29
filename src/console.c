@@ -22,6 +22,7 @@
 #endif
 #include <ctype.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/pm/device.h>
 #include <zephyr/sys/reboot.h>
