@@ -20,6 +20,8 @@
 	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 	THE SOFTWARE.
 */
+#include <stdint.h>
+#include <stdbool.h>
 #include "sensor/sensors_enum.h"
 #include "system/status.h"
 
