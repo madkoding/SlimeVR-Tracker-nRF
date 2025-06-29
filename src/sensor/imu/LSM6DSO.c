@@ -380,10 +380,23 @@ uint8_t lsm6dso_setup_WOM(void) {  // TODO: should be off by the time WOM will b
 
 // External sensor setup and communication functions for LSM6DSO
 int lsm6dso_ext_setup(void) {
-	LOG_DBG("LSM6DSO: Setting up external sensor interface");
+	LOG_INF("LSM6DSO: Setting up external sensor interface (sensor hub)");
+
+	// Read current FUNC_CFG_ACCESS to verify communication
+	uint8_t func_cfg_before;
+	int err = ssi_reg_read_byte(
+		SENSOR_INTERFACE_DEV_IMU,
+		LSM6DSO_FUNC_CFG_ACCESS,
+		&func_cfg_before
+	);
+	if (err) {
+		LOG_ERR("Failed to read FUNC_CFG_ACCESS register: %d", err);
+		return err;
+	}
+	LOG_DBG("Current FUNC_CFG_ACCESS: 0x%02x", func_cfg_before);
 
 	// First, disable the sensor hub
-	int err = ssi_reg_write_byte(
+	err = ssi_reg_write_byte(
 		SENSOR_INTERFACE_DEV_IMU,
 		LSM6DSO_FUNC_CFG_ACCESS,
 		0x40
@@ -392,12 +405,31 @@ int lsm6dso_ext_setup(void) {
 		LOG_ERR("Failed to switch to sensor hub registers: %d", err);
 		return err;
 	}
+	LOG_DBG("Switched to sensor hub registers");
+
+	// Read master config to verify we're in the right bank
+	uint8_t master_config;
+	err = ssi_reg_read_byte(
+		SENSOR_INTERFACE_DEV_IMU,
+		LSM6DSO_MASTER_CONFIG,
+		&master_config
+	);
+	if (err) {
+		LOG_ERR("Failed to read MASTER_CONFIG: %d", err);
+		return err;
+	}
+	LOG_DBG("Current MASTER_CONFIG: 0x%02x", master_config);
 
 	err |= ssi_reg_write_byte(
 		SENSOR_INTERFACE_DEV_IMU,
 		LSM6DSO_MASTER_CONFIG,
 		0x00
 	);  // disable I2C master
+	if (err) {
+		LOG_ERR("Failed to disable I2C master: %d", err);
+		return err;
+	}
+	LOG_DBG("Disabled I2C master");
 
 	// Configure sensor hub timing
 	err |= ssi_reg_write_byte(
@@ -405,6 +437,11 @@ int lsm6dso_ext_setup(void) {
 		LSM6DSO_SLV0_CONFIG,
 		0x00
 	);  // reset slave 0 config
+	if (err) {
+		LOG_ERR("Failed to reset slave 0 config: %d", err);
+		return err;
+	}
+	LOG_DBG("Reset slave 0 config");
 
 	// Switch back to normal registers
 	err |= ssi_reg_write_byte(
@@ -412,6 +449,24 @@ int lsm6dso_ext_setup(void) {
 		LSM6DSO_FUNC_CFG_ACCESS,
 		0x00
 	);  // switch to normal registers
+	if (err) {
+		LOG_ERR("Failed to switch back to normal registers: %d", err);
+		return err;
+	}
+	LOG_DBG("Switched back to normal registers");
+
+	// Verify we're back in normal mode
+	uint8_t func_cfg_after;
+	err = ssi_reg_read_byte(
+		SENSOR_INTERFACE_DEV_IMU,
+		LSM6DSO_FUNC_CFG_ACCESS,
+		&func_cfg_after
+	);
+	if (err) {
+		LOG_ERR("Failed to verify FUNC_CFG_ACCESS: %d", err);
+		return err;
+	}
+	LOG_DBG("FUNC_CFG_ACCESS after setup: 0x%02x", func_cfg_after);
 
 	if (err) {
 		LOG_ERR("Failed to initialize sensor hub: %d", err);
@@ -422,7 +477,7 @@ int lsm6dso_ext_setup(void) {
 	k_usleep(1000);
 
 	sensor_interface_ext_configure(&sensor_ext_lsm6dso);
-	LOG_DBG("LSM6DSO: External sensor interface configured");
+	LOG_INF("LSM6DSO: External sensor interface configured successfully");
 	return 0;
 }
 

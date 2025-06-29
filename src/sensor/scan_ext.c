@@ -41,15 +41,18 @@ int sensor_scan_ext(
 	const int dev_ids[]
 ) {
 	LOG_DBG("sensor_scan_ext: Starting external sensor scan");
+	printk("*** SENSOR_SCAN_EXT: Starting scan ***\n");
 	LOG_DBG(
 		"sensor_scan_ext: ext_dev_addr=0x%04x, dev_addr_count=%d",
 		*ext_dev_addr,
 		dev_addr_count
 	);
+	printk("ext_dev_addr=0x%04x, dev_addr_count=%d\n", *ext_dev_addr, dev_addr_count);
 
 	if (*ext_dev_addr >= 0x7F)  // ignoring device
 	{
 		LOG_DBG("sensor_scan_ext: Ignoring device (addr >= 0x7F)");
+		printk("SENSOR_SCAN_EXT: Ignoring device (addr >= 0x7F)\n");
 		return -1;
 	}
 
@@ -104,6 +107,23 @@ int sensor_scan_ext(
 						}
 						LOG_DBG("Power up BMM150");
 						k_msleep(2);  // BMM150 start-up
+					}
+					if (addr == 0x30 && reg == 0x2F)  // MMC5983MA special case
+					{
+						LOG_DBG(
+							"MMC5983MA special case: attempting soft reset and init"
+						);
+						// Try soft reset first
+						int err = ext_ssi->ext_write(
+							addr,
+							(const uint8_t[]){0x0A, 0x80},
+							2
+						);  // MMC5983MA soft reset
+						if (!err) {
+							k_msleep(10);  // Wait for reset to complete
+							// Try to read product ID after reset
+							LOG_DBG("Reading MMC5983MA product ID after reset");
+						}
 					}
 					int err = ext_ssi->ext_write_read(addr, &reg, 1, &id, 1);
 					LOG_DBG(
@@ -165,6 +185,11 @@ int sensor_scan_ext(
 								  // with full scan
 	{
 		LOG_WRN("No device found at address: 0x%02X", *ext_dev_addr);
+		printk(
+			"*** SENSOR_SCAN_EXT: No device found at address 0x%02X, retrying full "
+			"scan ***\n",
+			*ext_dev_addr
+		);
 		*ext_dev_addr = 0;
 		*ext_dev_reg = 0xFF;
 		return sensor_scan_ext(
@@ -179,6 +204,7 @@ int sensor_scan_ext(
 		);
 	}
 
+	printk("*** SENSOR_SCAN_EXT: No external sensor found, marking as ignored ***\n");
 	*ext_dev_addr = 0xFF;  // no device found, mark as ignored
 	return -1;
 }

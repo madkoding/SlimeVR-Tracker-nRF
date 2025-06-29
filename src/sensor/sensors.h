@@ -142,45 +142,44 @@ const uint8_t i2c_dev_mag_addr[]
 	= {1, 0x0C, 1,    0x0D, 2,    0x0E, 0x0F, 4, 0x10, 0x11, 0x12, 0x13,  // why bosch
 	   4, 0x14, 0x15, 0x16, 0x17, 1,    0x19, 1, 0x1C, 1,    0x1E, 1,    0x30,
 	   1, 0x3C, 1,    0x7C};
-const uint8_t i2c_dev_mag_reg[] = {2,    0x01,  // AK09916/AK09940 first
-								   0x00, 3,    0x01,  // AK09940 first
-								   0x00, 0x0D, 2,    0x01,  // AK09940 first
-								   0x00, 1,    0x40, 1,    0x00, 1, 0x00, 2,    0x00,
-								   0x0F, 3,    0x0A, 0x0F, 0x4F, 3, 0x20, 0x2F,
-								   0x08,  // MMC5983MA STATUS register
-								   1,    0x00, 1,    0x00};
+const uint8_t i2c_dev_mag_reg[]
+	= {2,    0x01,  // AK09916/AK09940 first
+	   0x00, 3,    0x01,  // AK09940 first
+	   0x00, 0x0D, 2,    0x01,  // AK09940 first
+	   0x00, 1,    0x40, 1,    0x00, 1,    0x00, 2,    0x00, 0x0F,
+	   3,    0x0A, 0x0F, 0x4F, 4,    0x08, 0x09, 0x0A, 0x2F,  // MMC5983MA multiple regs
+	   1,    0x00, 1,    0x00};
 const uint8_t i2c_dev_mag_id[] = {
-	2, 0x09, 0xA3,  // reg 0x01
-	2, 0x08, 0x48,  // reg 0x00
-	1, 0xA3,  // reg 0x01
-	2, 0x08, 0x48,  // reg 0x00
-	1, 0xFF,  // reg 0x0D
-	1, 0xA3,  // reg 0x01
-	2, 0x08, 0x48,  // reg 0x00
-	1, 0x32,  // reg 0x40
-	1, 0x33,  // reg 0x00
-	3, 0x06, 0x20, 0x21,  // reg 0x00
-	1, 0x80,  // reg 0x00
-	1, 0x3D,  // reg 0x0F
-	1, 0x48,  // reg 0x0A
-	1, 0x3D,  // reg 0x0F
-	1, 0x40,  // reg 0x4F
-	1, 0x06,  // reg 0x20
-	2, 0x0A, 0x30,  // reg 0x2F
-	1, 0x00,  // reg 0x08 - MMC5983MA STATUS register (should read 0x00 initially)
-	1, 0x80,  // reg 0x00
-	1, 0x90  // reg 0x00
+	2,    0x09, 0xA3,  // reg 0x01
+	2,    0x08, 0x48,  // reg 0x00
+	1,    0xA3,  // reg 0x01
+	2,    0x08, 0x48,  // reg 0x00
+	1,    0xFF,  // reg 0x0D
+	1,    0xA3,  // reg 0x01
+	2,    0x08, 0x48,  // reg 0x00
+	1,    0x32,  // reg 0x40
+	1,    0x33,  // reg 0x00
+	3,    0x06, 0x20, 0x21,  // reg 0x00
+	1,    0x80,  // reg 0x00
+	1,    0x3D,  // reg 0x0F
+	1,    0x48,  // reg 0x0A
+	1,    0x3D,  // reg 0x0F
+	1,    0x40,  // reg 0x4F
+	1,    0x06,  // reg 0x20
+	2,    0x0A, 0x30,  // reg 0x2F
+	4,    0x00, 0x20, 0x80,
+	0x30,  // MMC5983MA: reg 0x08(STATUS), 0x09(CTRL0), 0x0A(CTRL1), 0x2F(Product ID)
+	1,    0x80,  // reg 0x00
+	1,    0x90  // reg 0x00
 };
-const int i2c_dev_mag[] = {
-	MAG_AK09916,   MAG_AK09940,    MAG_IST8308,   MAG_AK8963,    MAG_AK09940,
-	MAG_IST8308,   MAG_AK8963,     MAG_QMC5883L,  MAG_AK09940,   MAG_IST8308,
-	MAG_AK8963,    MAG_BMM150,     MAG_BMM350,    MAG_IST8306,   MAG_IST8320,
-	MAG_IST8321,   MAG_QMC6310,    MAG_LIS3MDL,   MAG_HMC5883L,  MAG_LIS3MDL,
-	MAG_LIS2MDL,   MAG_MMC34160PJ, MAG_MMC3630KJ, MAG_MMC5983MA,  // MMC5983MA detected
-																  // via STATUS register
-	MAG_MMC5983MA,  // MMC5983MA on 0x30 via STATUS register (0x08)
-	MAG_QMC6310,   MAG_QMC6309
-};
+const int i2c_dev_mag[]
+	= {MAG_AK09916,   MAG_AK09940,    MAG_IST8308,   MAG_AK8963,    MAG_AK09940,
+	   MAG_IST8308,   MAG_AK8963,     MAG_QMC5883L,  MAG_AK09940,   MAG_IST8308,
+	   MAG_AK8963,    MAG_BMM150,     MAG_BMM350,    MAG_IST8306,   MAG_IST8320,
+	   MAG_IST8321,   MAG_QMC6310,    MAG_LIS3MDL,   MAG_HMC5883L,  MAG_LIS3MDL,
+	   MAG_LIS2MDL,   MAG_MMC34160PJ, MAG_MMC3630KJ, MAG_MMC5983MA, MAG_MMC5983MA,
+	   MAG_MMC5983MA, MAG_MMC5983MA,  // MMC5983MA detected via multiple registers
+	   MAG_QMC6310,   MAG_QMC6309};
 
 int sensor_scan_imu(struct i2c_dt_spec* i2c_dev, uint8_t* i2c_dev_reg) {
 	return sensor_scan_i2c(

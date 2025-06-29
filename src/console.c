@@ -1,9 +1,9 @@
-#include "globals.h"
-#include "system/system.h"
-#include "sensor/sensor.h"
-#include "sensor/calibration.h"
-#include "connection/esb.h"
 #include "build_defines.h"
+#include "connection/esb.h"
+#include "globals.h"
+#include "sensor/calibration.h"
+#include "sensor/sensor.h"
+#include "system/system.h"
 
 #if CONFIG_USB_DEVICE_STACK
 #define USB DT_NODELABEL(usbd)
@@ -13,26 +13,35 @@
 #if (USB_EXISTS || CONFIG_RTT_CONSOLE) && CONFIG_USE_SLIMENRF_CONSOLE
 
 #if USB_EXISTS
-#include <zephyr/usb/usb_device.h>
-#include <zephyr/usb/class/usb_hid.h>
 #include <zephyr/console/console.h>
 #include <zephyr/logging/log_ctrl.h>
+#include <zephyr/usb/class/usb_hid.h>
+#include <zephyr/usb/usb_device.h>
 #else
 #include "system/rtt_console.h"
 #endif
-#include <zephyr/drivers/gpio.h>
-#include <zephyr/sys/reboot.h>
-#include <zephyr/pm/device.h>
-
 #include <ctype.h>
 #include <stdlib.h>
+#include <zephyr/drivers/gpio.h>
+#include <zephyr/pm/device.h>
+#include <zephyr/sys/reboot.h>
 
 #include "connection/connection.h"
 
 LOG_MODULE_REGISTER(console, LOG_LEVEL_INF);
 
 static void usb_init_thread(void);
-K_THREAD_DEFINE(usb_init_thread_id, 256, usb_init_thread, NULL, NULL, NULL, 6, 0, 500); // Wait before enabling USB
+K_THREAD_DEFINE(
+	usb_init_thread_id,
+	256,
+	usb_init_thread,
+	NULL,
+	NULL,
+	NULL,
+	6,
+	0,
+	500
+);  // Wait before enabling USB
 
 static void console_thread(void);
 static struct k_thread console_thread_id;
@@ -43,94 +52,76 @@ static K_THREAD_STACK_DEFINE(console_thread_id_stack, 1024);
 #define NRF5_BOOTLOADER CONFIG_BOARD_HAS_NRF5_BOOTLOADER
 
 #if NRF5_BOOTLOADER
-static const struct device *gpio_dev = DEVICE_DT_GET(DT_NODELABEL(gpio0));
+static const struct device* gpio_dev = DEVICE_DT_GET(DT_NODELABEL(gpio0));
 #endif
 
 #if DT_NODE_HAS_STATUS(DT_NODELABEL(mag), okay)
 #define SENSOR_MAG_EXISTS true
 #endif
 
-static const char *meows[] = {
-	"Mew",
-	"Meww",
-	"Meow",
-	"Meow meow",
-	"Mrrrp",
-	"Mrrf",
-	"Mreow",
-	"Mrrrow",
-	"Mrrr",
-	"Purr",
-	"mew",
-	"meww",
-	"meow",
-	"meow meow",
-	"mrrrp",
-	"mrrf",
-	"mreow",
-	"mrrrow",
-	"mrrr",
-	"purr",
+static const char* meows[] = {
+	"Mew",    "Meww", "Meow",  "Meow meow", "Mrrrp", "Mrrf", "Mreow",
+	"Mrrrow", "Mrrr", "Purr",  "mew",       "meww",  "meow", "meow meow",
+	"mrrrp",  "mrrf", "mreow", "mrrrow",    "mrrr",  "purr",
 };
 
-static const char *meow_punctuations[] = {
-	".",
-	"?",
-	"!",
-	"-",
-	"~",
-	""
-};
+static const char* meow_punctuations[] = {".", "?", "!", "-", "~", ""};
 
-static const char *meow_suffixes[] = {
-	" :3",
-	" :3c",
-	" ;3",
-	" ;3c",
-	" x3",
-	" x3c",
-	" X3",
-	" X3c",
-	" >:3",
-	" >:3c",
-	" >;3",
-	" >;3c",
-	""
-};
+static const char* meow_suffixes[]
+	= {" :3",
+	   " :3c",
+	   " ;3",
+	   " ;3c",
+	   " x3",
+	   " x3c",
+	   " X3",
+	   " X3c",
+	   " >:3",
+	   " >:3c",
+	   " >;3",
+	   " >;3c",
+	   ""};
 
-static void console_thread_create(void)
-{
-	k_thread_create(&console_thread_id, console_thread_id_stack, K_THREAD_STACK_SIZEOF(console_thread_id_stack), (k_thread_entry_t)console_thread, NULL, NULL, NULL, 6, 0, K_NO_WAIT);
+static void console_thread_create(void) {
+	k_thread_create(
+		&console_thread_id,
+		console_thread_id_stack,
+		K_THREAD_STACK_SIZEOF(console_thread_id_stack),
+		(k_thread_entry_t)console_thread,
+		NULL,
+		NULL,
+		NULL,
+		6,
+		0,
+		K_NO_WAIT
+	);
 }
 
 #if USB_EXISTS
-static void status_cb(enum usb_dc_status_code status, const uint8_t *param)
-{
-	const struct log_backend *backend = log_backend_get_by_name("log_backend_uart");
-	const struct device *const cons = DEVICE_DT_GET(DT_CHOSEN(zephyr_console));
-	switch (status)
-	{
-	case USB_DC_CONNECTED:
-		set_status(SYS_STATUS_USB_CONNECTED, true);
-		pm_device_action_run(cons, PM_DEVICE_ACTION_RESUME);
-		log_backend_enable(backend, backend->cb->ctx, CONFIG_LOG_MAX_LEVEL);
-		console_thread_create();
-		break;
-	case USB_DC_DISCONNECTED:
-		set_status(SYS_STATUS_USB_CONNECTED, false);
-		k_thread_abort(&console_thread_id);
-		log_backend_disable(backend);
-		pm_device_action_run(cons, PM_DEVICE_ACTION_SUSPEND);
-		break;
-	default:
-		LOG_DBG("status %u unhandled", status);
-		break;
+static void status_cb(enum usb_dc_status_code status, const uint8_t* param) {
+	const struct log_backend* backend = log_backend_get_by_name("log_backend_uart");
+	const struct device* const cons = DEVICE_DT_GET(DT_CHOSEN(zephyr_console));
+	switch (status) {
+		case USB_DC_CONNECTED:
+			set_status(SYS_STATUS_USB_CONNECTED, true);
+			pm_device_action_run(cons, PM_DEVICE_ACTION_RESUME);
+			log_backend_enable(backend, backend->cb->ctx, CONFIG_LOG_MAX_LEVEL);
+			console_thread_create();
+			break;
+		case USB_DC_DISCONNECTED:
+			set_status(SYS_STATUS_USB_CONNECTED, false);
+			k_thread_abort(&console_thread_id);
+			log_backend_disable(backend);
+			pm_device_action_run(cons, PM_DEVICE_ACTION_SUSPEND);
+			break;
+		default:
+			LOG_DBG("status %u unhandled", status);
+			break;
 	}
 }
 #endif
 
-static void usb_init_thread(void)
-{
+static void usb_init_thread(void) {
 #if USB_EXISTS
 	usb_enable(status_cb);
 #else
@@ -138,8 +129,7 @@ static void usb_init_thread(void)
 #endif
 }
 
-static void print_info(void)
-{
+static void print_info(void) {
 #if USB_EXISTS
 	printk(CONFIG_USB_DEVICE_MANUFACTURER " " CONFIG_USB_DEVICE_PRODUCT "\n");
 #endif
@@ -149,43 +139,105 @@ static void print_info(void)
 	printk("SOC: " CONFIG_SOC "\n");
 	printk("Target: " CONFIG_BOARD_TARGET "\n");
 
-	printk("\nIMU: %s\n", (retained->imu_addr & 0x7F) != 0x7F ? sensor_get_sensor_imu_name() : "Not searching");
-	if (retained->imu_reg != 0xFF)
+	printk(
+		"\nIMU: %s\n",
+		(retained->imu_addr & 0x7F) != 0x7F ? sensor_get_sensor_imu_name()
+											: "Not searching"
+	);
+	if (retained->imu_reg != 0xFF) {
 		printk("Interface: %s\n", (retained->imu_reg & 0x80) ? "SPI" : "I2C");
+	}
 	printk("Address: 0x%02X%02X\n", retained->imu_addr, retained->imu_reg);
 
 #if SENSOR_MAG_EXISTS
-	printk("\nMagnetometer: %s\n", (retained->mag_addr & 0x7F) != 0x7F ? sensor_get_sensor_mag_name() : "Not searching");
-	if (retained->mag_reg != 0xFF)
-		printk("Interface: %s%s\n", (retained->mag_reg & 0x80) ? "SPI" : "I2C", (retained->mag_addr & 0x80) ? ", external" : "");
+	// Debug information for magnetometer detection
+	printk("\n--- MAGNETOMETER DEBUG INFO ---\n");
+	printk("retained->mag_addr: 0x%02X\n", retained->mag_addr);
+	printk("retained->mag_reg: 0x%02X\n", retained->mag_reg);
+	printk("(retained->mag_addr & 0x7F): 0x%02X\n", (retained->mag_addr & 0x7F));
+	printk(
+		"Magnetometer detected: %s\n",
+		(retained->mag_addr & 0x7F) != 0x7F ? "YES" : "NO"
+	);
+	if ((retained->mag_addr & 0x7F) != 0x7F) {
+		printk("Sensor name: %s\n", sensor_get_sensor_mag_name());
+	}
+	printk("--- END DEBUG INFO ---\n");
+
+	printk(
+		"\nMagnetometer: %s\n",
+		(retained->mag_addr & 0x7F) != 0x7F ? sensor_get_sensor_mag_name()
+											: "Not searching"
+	);
+	if (retained->mag_reg != 0xFF) {
+		printk(
+			"Interface: %s%s\n",
+			(retained->mag_reg & 0x80) ? "SPI" : "I2C",
+			(retained->mag_addr & 0x80) ? ", external" : ""
+		);
+	}
 	printk("Address: 0x%02X%02X\n", retained->mag_addr, retained->mag_reg);
 #endif
 
 #if CONFIG_SENSOR_USE_6_SIDE_CALIBRATION
 	printk("\nAccelerometer matrix:\n");
-	for (int i = 0; i < 3; i++)
-		printk("%.5f %.5f %.5f %.5f\n", (double)retained->accBAinv[0][i], (double)retained->accBAinv[1][i], (double)retained->accBAinv[2][i], (double)retained->accBAinv[3][i]);
+	for (int i = 0; i < 3; i++) {
+		printk(
+			"%.5f %.5f %.5f %.5f\n",
+			(double)retained->accBAinv[0][i],
+			(double)retained->accBAinv[1][i],
+			(double)retained->accBAinv[2][i],
+			(double)retained->accBAinv[3][i]
+		);
+	}
 #else
-	printk("\nAccelerometer bias: %.5f %.5f %.5f\n", (double)retained->accelBias[0], (double)retained->accelBias[1], (double)retained->accelBias[2]);
+	printk(
+		"\nAccelerometer bias: %.5f %.5f %.5f\n",
+		(double)retained->accelBias[0],
+		(double)retained->accelBias[1],
+		(double)retained->accelBias[2]
+	);
 #endif
-	printk("Gyroscope bias: %.5f %.5f %.5f\n", (double)retained->gyroBias[0], (double)retained->gyroBias[1], (double)retained->gyroBias[2]);
+	printk(
+		"Gyroscope bias: %.5f %.5f %.5f\n",
+		(double)retained->gyroBias[0],
+		(double)retained->gyroBias[1],
+		(double)retained->gyroBias[2]
+	);
 #if SENSOR_MAG_EXISTS
-//	printk("Magnetometer bridge offset: %.5f %.5f %.5f\n", (double)retained->magBias[0], (double)retained->magBias[1], (double)retained->magBias[2]);
+	//	printk("Magnetometer bridge offset: %.5f %.5f %.5f\n",
+	//(double)retained->magBias[0], (double)retained->magBias[1],
+	//(double)retained->magBias[2]);
 	printk("Magnetometer matrix:\n");
-	for (int i = 0; i < 3; i++)
-		printk("%.5f %.5f %.5f %.5f\n", (double)retained->magBAinv[0][i], (double)retained->magBAinv[1][i], (double)retained->magBAinv[2][i], (double)retained->magBAinv[3][i]);
+	for (int i = 0; i < 3; i++) {
+		printk(
+			"%.5f %.5f %.5f %.5f\n",
+			(double)retained->magBAinv[0][i],
+			(double)retained->magBAinv[1][i],
+			(double)retained->magBAinv[2][i],
+			(double)retained->magBAinv[3][i]
+		);
+	}
 #endif
 
 	printk("\nFusion: %s\n", sensor_get_sensor_fusion_name());
 
 	bool paired = retained->paired_addr[0];
-	printk(paired ? "\nTracker ID: %u\n" : "\nTracker ID: None\n", retained->paired_addr[1]);
-	printk("Device address: %012llX\n", *(uint64_t *)NRF_FICR->DEVICEADDR & 0xFFFFFFFFFFFF);
-	printk(paired ? "Receiver address: %012llX\n" : "Receiver address: None\n", (*(uint64_t *)&retained->paired_addr[0] >> 16) & 0xFFFFFFFFFFFF);
+	printk(
+		paired ? "\nTracker ID: %u\n" : "\nTracker ID: None\n",
+		retained->paired_addr[1]
+	);
+	printk(
+		"Device address: %012llX\n",
+		*(uint64_t*)NRF_FICR->DEVICEADDR & 0xFFFFFFFFFFFF
+	);
+	printk(
+		paired ? "Receiver address: %012llX\n" : "Receiver address: None\n",
+		(*(uint64_t*)&retained->paired_addr[0] >> 16) & 0xFFFFFFFFFFFF
+	);
 }
 
-static void print_uptime(const uint64_t ticks, const char *name)
-{
+static void print_uptime(const uint64_t ticks, const char* name) {
 	uint64_t uptime = k_ticks_to_us_floor64(ticks);
 
 	uint32_t hours = uptime / 3600000000;
@@ -197,26 +249,38 @@ static void print_uptime(const uint64_t ticks, const char *name)
 	uint16_t milliseconds = uptime / 1000;
 	uint16_t microseconds = uptime % 1000;
 
-	printk("%s: %02u:%02u:%02u.%03u,%03u\n", name, hours, minutes, seconds, milliseconds, microseconds);
+	printk(
+		"%s: %02u:%02u:%02u.%03u,%03u\n",
+		name,
+		hours,
+		minutes,
+		seconds,
+		milliseconds,
+		microseconds
+	);
 }
 
-static void print_meow(void)
-{
+static void print_meow(void) {
 	int64_t ticks = k_uptime_ticks();
 
-	ticks %= ARRAY_SIZE(meows) * ARRAY_SIZE(meow_punctuations) * ARRAY_SIZE(meow_suffixes); // silly number generator
+	ticks %= ARRAY_SIZE(meows) * ARRAY_SIZE(meow_punctuations)
+		   * ARRAY_SIZE(meow_suffixes);  // silly number generator
 	uint8_t meow = ticks / (ARRAY_SIZE(meow_punctuations) * ARRAY_SIZE(meow_suffixes));
 	ticks %= (ARRAY_SIZE(meow_punctuations) * ARRAY_SIZE(meow_suffixes));
 	uint8_t punctuation = ticks / ARRAY_SIZE(meow_suffixes);
 	uint8_t suffix = ticks % ARRAY_SIZE(meow_suffixes);
 
-	printk("%s%s%s\n", meows[meow], meow_punctuations[punctuation], meow_suffixes[suffix]);
+	printk(
+		"%s%s%s\n",
+		meows[meow],
+		meow_punctuations[punctuation],
+		meow_suffixes[suffix]
+	);
 }
 
-static void console_thread(void)
-{
+static void console_thread(void) {
 #if DFU_EXISTS
-	if (button_read()) // button held on usb connect, enter DFU
+	if (button_read())  // button held on usb connect, enter DFU
 	{
 #if ADAFRUIT_BOOTLOADER
 		NRF_POWER->GPREGRET = 0x57;
@@ -230,10 +294,13 @@ static void console_thread(void)
 
 #if USB_EXISTS
 	console_getline_init();
-	while (log_data_pending())
+	while (log_data_pending()) {
 		k_usleep(1);
+	}
 	k_msleep(100);
-	printk("*** " CONFIG_USB_DEVICE_MANUFACTURER " " CONFIG_USB_DEVICE_PRODUCT " ***\n");
+	printk(
+		"*** " CONFIG_USB_DEVICE_MANUFACTURER " " CONFIG_USB_DEVICE_PRODUCT " ***\n"
+	);
 #endif
 	printk(FW_STRING);
 	printk("debug\n");
@@ -282,87 +349,75 @@ static void console_thread(void)
 
 	while (1) {
 #if USB_EXISTS
-		uint8_t *line = console_getline();
+		uint8_t* line = console_getline();
 #else
-		uint8_t *line = rtt_console_getline();
+		uint8_t* line = rtt_console_getline();
 #endif
-		uint8_t *arg = NULL;
-		for (uint8_t *p = line; *p; ++p)
-		{
+		uint8_t* arg = NULL;
+		for (uint8_t* p = line; *p; ++p) {
 			*p = tolower(*p);
-			if (*p == ' ' && !arg)
-			{
+			if (*p == ' ' && !arg) {
 				*p = 0;
 				p++;
 				*p = tolower(*p);
-				if (*p)
+				if (*p) {
 					arg = p;
+				}
 			}
 		}
 
 #if CONFIG_SOC_NRF52840
-		if (memcmp(line, command_debug, sizeof(command_debug)) == 0)
-		{
+		if (memcmp(line, command_debug, sizeof(command_debug)) == 0) {
 			connection_get_errors();
-		}
-		else if (memcmp(line, command_info, sizeof(command_info)) == 0)
+		} else if (memcmp(line, command_info, sizeof(command_info)) == 0)
 #else
 		if (memcmp(line, command_info, sizeof(command_info)) == 0)
 #endif
 		{
+			// Call debug function to show magnetometer detection info
+			sensor_debug_mag_info();
+
 			print_info();
-		}
-		else if (memcmp(line, command_uptime, sizeof(command_uptime)) == 0)
-		{
+		} else if (memcmp(line, command_uptime, sizeof(command_uptime)) == 0) {
 			uint64_t uptime = k_uptime_ticks();
 			print_uptime(uptime, "Uptime");
-			print_uptime(uptime - retained->uptime_latest + retained->uptime_sum, "Accumulated");
-		}
-		else if (memcmp(line, command_reboot, sizeof(command_reboot)) == 0)
-		{
+			print_uptime(
+				uptime - retained->uptime_latest + retained->uptime_sum,
+				"Accumulated"
+			);
+		} else if (memcmp(line, command_reboot, sizeof(command_reboot)) == 0) {
 			sys_request_system_reboot();
-		}
-		else if (memcmp(line, command_scan, sizeof(command_scan)) == 0)
-		{
+		} else if (memcmp(line, command_scan, sizeof(command_scan)) == 0) {
 			sensor_request_scan(true);
-		}
-		else if (memcmp(line, command_calibrate, sizeof(command_calibrate)) == 0)
-		{
+		} else if (memcmp(line, command_calibrate, sizeof(command_calibrate)) == 0) {
 			sensor_request_calibration();
 		}
 #if CONFIG_SENSOR_USE_6_SIDE_CALIBRATION
-		else if (memcmp(line, command_6_side, sizeof(command_6_side)) == 0)
-		{
+		else if (memcmp(line, command_6_side, sizeof(command_6_side)) == 0) {
 			sensor_request_calibration_6_side();
 		}
 #endif
 #if SENSOR_MAG_EXISTS
-		else if (memcmp(line, command_mag, sizeof(command_mag)) == 0)
-		{
+		else if (memcmp(line, command_mag, sizeof(command_mag)) == 0) {
 			sensor_calibration_clear_mag(NULL, true);
 		}
 #endif
-		else if (memcmp(line, command_set, sizeof(command_set)) == 0) 
-		{
+		else if (memcmp(line, command_set, sizeof(command_set)) == 0) {
 			uint64_t addr = strtoull(arg, NULL, 16);
 			uint8_t buf[17];
 			snprintk(buf, 17, "%016llx", addr);
-			if (addr != 0 && memcmp(buf, arg, 17) == 0)
+			if (addr != 0 && memcmp(buf, arg, 17) == 0) {
 				esb_set_pair(addr);
-			else
+			} else {
 				printk("Invalid address\n");
-		}
-		else if (memcmp(line, command_pair, sizeof(command_pair)) == 0) 
-		{
+			}
+		} else if (memcmp(line, command_pair, sizeof(command_pair)) == 0) {
 			esb_reset_pair();
-		}
-		else if (memcmp(line, command_clear, sizeof(command_clear)) == 0) 
-		{
+		} else if (memcmp(line, command_clear, sizeof(command_clear)) == 0) {
 			esb_clear_pair();
 		}
 #if DFU_EXISTS
-		else if (memcmp(line, command_dfu, sizeof(command_dfu)) == 0)
-		{
+		else if (memcmp(line, command_dfu, sizeof(command_dfu)) == 0) {
 #if ADAFRUIT_BOOTLOADER
 			NRF_POWER->GPREGRET = 0x57;
 			sys_request_system_reboot();
@@ -372,12 +427,9 @@ static void console_thread(void)
 #endif
 		}
 #endif
-		else if (memcmp(line, command_meow, sizeof(command_meow)) == 0) 
-		{
+		else if (memcmp(line, command_meow, sizeof(command_meow)) == 0) {
 			print_meow();
-		}
-		else
-		{
+		} else {
 			printk("Unknown command\n");
 		}
 	}

@@ -34,6 +34,7 @@ int sensor_request_scan(bool force);
 void sensor_scan_read(void);
 void sensor_scan_write(void);
 void sensor_scan_clear(void);
+void sensor_debug_mag_info(void);  // Debug function for magnetometer detection
 
 void sensor_retained_read(void);
 void sensor_retained_write(void);
@@ -70,37 +71,55 @@ typedef struct sensor_fusion {
 } sensor_fusion_t;
 
 typedef struct sensor_imu {
-	int (*init)(float, float, float, float*, float*); // first float is clock_rate, nonzero means use CLKIN, return update time, return 0 if success, -1 if general error
+	int (*init)(
+		float,
+		float,
+		float,
+		float*,
+		float*
+	);  // first float is clock_rate, nonzero means use CLKIN, return update time,
+		// return 0 if success, -1 if general error
 	void (*shutdown)(void);
 
-	void (*update_fs)(float, float, float*, float*); // return actual range
-	int (*update_odr)(float, float, float*, float*); // return actual update time, return 0 if success, 1 if odr is same, -1 if general error
+	void (*update_fs)(float, float, float*, float*);  // return actual range
+	int (*update_odr)(float, float, float*, float*);  // return actual update time,
+													  // return 0 if success, 1 if odr
+													  // is same, -1 if general error
 
 	uint16_t (*fifo_read)(uint8_t*, uint16_t);
-	int (*fifo_process)(uint16_t, uint8_t*, float[3], float[3]); // g, deg/s
-	void (*accel_read)(float[3]); // g
-	void (*gyro_read)(float[3]); // deg/s
-	float (*temp_read)(void); // deg C
+	int (*fifo_process)(uint16_t, uint8_t*, float[3], float[3]);  // g, deg/s
+	void (*accel_read)(float[3]);  // g
+	void (*gyro_read)(float[3]);  // deg/s
+	float (*temp_read)(void);  // deg C
 
 	uint8_t (*setup_WOM)(void);
 
-	int (*ext_setup)(void); // register write/writeread with interface, return 0 if success, -1 if error or not available
-	int (*ext_passthrough)(bool); // enable/disable passthrough mode, return 0 if success, -1 if error or not available
+	int (*ext_setup)(void);  // register write/writeread with interface, return 0 if
+							 // success, -1 if error or not available
+	int (*ext_passthrough)(bool);  // enable/disable passthrough mode, return 0 if
+								   // success, -1 if error or not available
 } sensor_imu_t;
 
 typedef struct sensor_mag {
-	int (*init)(float, float*); // return update time, return 0 if success, 1 if general error
+	int (*init)(
+		float,
+		float*
+	);  // return update time, return 0 if success, 1 if general error
 	void (*shutdown)(void);
 
-	int (*update_odr)(float, float*); // return actual update time, return 0 if success, 1 if odr is same, -1 if general error
+	int (*update_odr)(float, float*);  // return actual update time, return 0 if
+									   // success, 1 if odr is same, -1 if general error
 
-	void (*mag_oneshot)(void); // trigger oneshot if exists
-	void (*mag_read)(float[3]); // any unit (usually gauss)
-	float (*temp_read)(float[3]); // deg C
+	void (*mag_oneshot)(void);  // trigger oneshot if exists
+	void (*mag_read)(float[3]);  // any unit (usually gauss)
+	float (*temp_read)(float[3]);  // deg C
 
-	void (*mag_process)(uint8_t*, float[3]); // use if magnetometer is present as an auxiliary sensor, from data read by IMU
-	uint8_t ext_min_burst; // minimum supported burst length for external interface
-	uint8_t ext_burst; // default supported burst length
+	void (*mag_process)(
+		uint8_t*,
+		float[3]
+	);  // use if magnetometer is present as an auxiliary sensor, from data read by IMU
+	uint8_t ext_min_burst;  // minimum supported burst length for external interface
+	uint8_t ext_burst;  // default supported burst length
 } sensor_mag_t;
 
 #endif
