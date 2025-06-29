@@ -154,11 +154,11 @@
 	pinctrl-1 = <&i2c0_sleep>;
 	pinctrl-names = "default", "sleep";
 
-	imu: imu@0 { // any address out of range (00, 7f, etc. will search all addresses and stored address first if available, specify an address here to search first otherwise
-		compatible = "i2c-device";
-		label = "imu";
-		reg = <0>;
-	};
+	// imu: imu@0 { // any address out of range (00, 7f, etc. will search all addresses and stored address first if available, specify an address here to search first otherwise
+	//	compatible = "i2c-device";
+	//	label = "imu";
+	//	reg = <0>;
+	// };
 
 	mag: mag@0 {
 		compatible = "i2c-device";
