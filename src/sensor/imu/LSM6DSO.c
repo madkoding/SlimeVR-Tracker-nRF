@@ -319,25 +319,31 @@ uint16_t lsm6dso_fifo_read(uint8_t* data, uint16_t len) {
 
 uint8_t lsm6dso_setup_WOM(void) {  // TODO: should be off by the time WOM will be setup
 	//	ssi_reg_write_byte(SENSOR_INTERFACE_DEV_IMU, LSM6DSO_CTRL1, ODR_OFF); // set
-	//accel off 	ssi_reg_write_byte(SENSOR_INTERFACE_DEV_IMU, LSM6DSO_CTRL2, ODR_OFF); //
-	//set gyro off
+	// accel off 	ssi_reg_write_byte(SENSOR_INTERFACE_DEV_IMU, LSM6DSO_CTRL2,
+	// ODR_OFF); // set gyro off
 
 	int err = ssi_reg_write_byte(
 		SENSOR_INTERFACE_DEV_IMU,
 		LSM6DSO_CTRL1,
 		DSO_ODR_208Hz | DSO_FS_XL_8G
 	);  // set accel ODR and FS
+	// Read device ID to determine correct bit configuration
+	uint8_t device_id = 0;
+	ssi_reg_read_byte(SENSOR_INTERFACE_DEV_IMU, 0x0F, &device_id);  // WHO_AM_I register
+
 	err |= ssi_reg_write_byte(
 		SENSOR_INTERFACE_DEV_IMU,
 		LSM6DSO_CTRL6,
 		DSO_OP_MODE_XL_NP
 	);  // set accel perf mode
+
+	// For LSM6DSR/ISM330DHCX (device ID 0x6B), the ULP bit should be 0
+	uint8_t ctrl5_value = (device_id == 0x6B) ? 0x00 : 0x80;
 	err |= ssi_reg_write_byte(
 		SENSOR_INTERFACE_DEV_IMU,
 		LSM6DSO_CTRL5,
-		0x80
-	);  // enable accel ULP // TODO: for LSM6DSR/ISM330DHCX this bit may be required to
-		// be 0
+		ctrl5_value
+	);  // ULP configuration based on device ID (LSM6DSR needs bit 0)
 	err |= ssi_reg_write_byte(
 		SENSOR_INTERFACE_DEV_IMU,
 		LSM6DSO_CTRL8,
@@ -525,17 +531,22 @@ int lsm6dso_ext_write_read(
 	uint8_t tmp;
 	err |= ssi_reg_read_byte(
 		SENSOR_INTERFACE_DEV_IMU,
-		LSM6DSO_FIFO_STATUS1,
+		LSM6DSO_OUTX_H_A,
 		&tmp
-	);  // clear any pending flags (use existing register)
+	);  // clear XLDA
 	uint8_t status = 0;
 	int64_t timeout = k_uptime_get() + 10;
-	while ((status & 0x01) && k_uptime_get() < timeout) {  // wait for completion
+	while ((status & 0x01) && k_uptime_get() < timeout) {  // XLDA
+		err |= ssi_reg_read_byte(SENSOR_INTERFACE_DEV_IMU, LSM6DSO_STATUS_REG, &status);
+	}
+	status = 0;
+	timeout = k_uptime_get() + 10;
+	while ((status & 0x01) && k_uptime_get() < timeout) {  // SENS_HUB_ENDOP
 		err |= ssi_reg_read_byte(
 			SENSOR_INTERFACE_DEV_IMU,
-			LSM6DSO_FIFO_STATUS1,
+			LSM6DSO_STATUS_MASTER_MAINPAGE,
 			&status
-		);  // use existing register for status
+		);
 	}
 	// Read data
 	err |= ssi_reg_write_byte(
