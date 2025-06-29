@@ -339,89 +339,92 @@ int sensor_scan(void) {
 			printk("\n*** STARTING EXTERNAL MAGNETOMETER SCAN ***\n");
 			printk("About to call sensor_scan_mag_ext()...\n");
 			printk("External interface ptr: %p\n", sensor_interface_ext_get());
-		}
-		mag_id = sensor_scan_mag_ext(
-			sensor_interface_ext_get(),
-			&sensor_mag_dev.addr,
-			&sensor_mag_dev_reg
-		);
-		printk("*** EXTERNAL MAG SCAN COMPLETED ***\n");
-		printk(
-			"Result: mag_id=%d, addr=0x%02x, reg=0x%02x\n",
-			mag_id,
-			sensor_mag_dev.addr,
-			sensor_mag_dev_reg
-		);
-		LOG_DBG(
-			"sensor_scan_mag_ext returned mag_id: %d, addr: 0x%02x, reg: 0x%02x",
-			mag_id,
-			sensor_mag_dev.addr,
-			sensor_mag_dev_reg
-		);
-		if (mag_id >= 0 && mag_id < (int)ARRAY_SIZE(sensor_mags)
-			&& sensor_mags[mag_id] != NULL && sensor_mags[mag_id] != &sensor_mag_none) {
-			err = sensor_interface_register_sensor_mag_ext(
-				sensor_mag_dev.addr,
-				sensor_mags[mag_id]->ext_min_burst,
-				sensor_mags[mag_id]->ext_burst
+
+			mag_id = sensor_scan_mag_ext(
+				sensor_interface_ext_get(),
+				&sensor_mag_dev.addr,
+				&sensor_mag_dev_reg
 			);
-			sensor_mag_dev.addr |= 0x80;  // mark as external
-			if (err) {
-				mag_id = -1;
-				LOG_ERR("Failed to register magnetometer external interface");
+			printk("*** EXTERNAL MAG SCAN COMPLETED ***\n");
+			printk(
+				"Result: mag_id=%d, addr=0x%02x, reg=0x%02x\n",
+				mag_id,
+				sensor_mag_dev.addr,
+				sensor_mag_dev_reg
+			);
+			LOG_DBG(
+				"sensor_scan_mag_ext returned mag_id: %d, addr: 0x%02x, reg: 0x%02x",
+				mag_id,
+				sensor_mag_dev.addr,
+				sensor_mag_dev_reg
+			);
+			if (mag_id >= 0 && mag_id < (int)ARRAY_SIZE(sensor_mags)
+				&& sensor_mags[mag_id] != NULL
+				&& sensor_mags[mag_id] != &sensor_mag_none) {
+				err = sensor_interface_register_sensor_mag_ext(
+					sensor_mag_dev.addr,
+					sensor_mags[mag_id]->ext_min_burst,
+					sensor_mags[mag_id]->ext_burst
+				);
+				sensor_mag_dev.addr |= 0x80;  // mark as external
+				if (err) {
+					mag_id = -1;
+					LOG_ERR("Failed to register magnetometer external interface");
+				} else {
+					LOG_INF("Successfully registered external magnetometer");
+				}
 			} else {
-				LOG_INF("Successfully registered external magnetometer");
+				LOG_DBG(
+					"No valid magnetometer found or unsupported mag_id: %d",
+					mag_id
+				);
 			}
 		} else {
-			LOG_DBG("No valid magnetometer found or unsupported mag_id: %d", mag_id);
+			LOG_ERR("ext_setup failed with error: %d", err);
 		}
 	} else {
-		LOG_ERR("ext_setup failed with error: %d", err);
+		LOG_DBG(
+			"Skipping external magnetometer scan - mag_id: %d, IMU addr: 0x%02x",
+			mag_id,
+			sensor_imu_dev.addr
+		);
 	}
-}
-else {
-	LOG_DBG(
-		"Skipping external magnetometer scan - mag_id: %d, IMU addr: 0x%02x",
-		mag_id,
-		sensor_imu_dev.addr
-	);
-}
 #endif
 #if !SENSOR_MAG_SPI_EXISTS && !SENSOR_MAG_EXISTS && !SENSOR_MAG_EXT_EXISTS
-LOG_WRN("Magnetometer node does not exist");
+	LOG_WRN("Magnetometer node does not exist");
 #endif
-if (mag_id >= (int)ARRAY_SIZE(dev_mag_names)) {
-	LOG_WRN("Found unknown device");
-} else if (mag_id < 0) {
-	LOG_WRN("No magnetometer detected");
-} else {
-	LOG_INF("Found %s", dev_mag_names[mag_id]);
-}
-if (mag_id >= 0)  // if there is no magnetometer we do not care as much
-{
-	if (mag_id >= (int)ARRAY_SIZE(sensor_mags) || sensor_mags[mag_id] == NULL
-		|| sensor_mags[mag_id] == &sensor_mag_none) {
-		sensor_mag = &sensor_mag_none;
-		mag_available = false;
-		LOG_ERR("Magnetometer not supported");
+	if (mag_id >= (int)ARRAY_SIZE(dev_mag_names)) {
+		LOG_WRN("Found unknown device");
+	} else if (mag_id < 0) {
+		LOG_WRN("No magnetometer detected");
 	} else {
-		sensor_mag = sensor_mags[mag_id];
-		mag_available = true;
+		LOG_INF("Found %s", dev_mag_names[mag_id]);
 	}
-} else {
-	sensor_mag = &sensor_mag_none;
-	mag_available = false;  // marked as not available
-}
+	if (mag_id >= 0)  // if there is no magnetometer we do not care as much
+	{
+		if (mag_id >= (int)ARRAY_SIZE(sensor_mags) || sensor_mags[mag_id] == NULL
+			|| sensor_mags[mag_id] == &sensor_mag_none) {
+			sensor_mag = &sensor_mag_none;
+			mag_available = false;
+			LOG_ERR("Magnetometer not supported");
+		} else {
+			sensor_mag = sensor_mags[mag_id];
+			mag_available = true;
+		}
+	} else {
+		sensor_mag = &sensor_mag_none;
+		mag_available = false;  // marked as not available
+	}
 
-sensor_scan_write();
-connection_update_sensor_ids(imu_id, mag_id);
-sensor_imu_id = imu_id;
-sensor_mag_id = mag_id;
+	sensor_scan_write();
+	connection_update_sensor_ids(imu_id, mag_id);
+	sensor_imu_id = imu_id;
+	sensor_mag_id = mag_id;
 
-sensor_sensor_init = true;  // successfully initialized
-sensor_sensor_scanning = false;  // done
-set_status(SYS_STATUS_SENSOR_ERROR, false);  // clear error
-return 0;
+	sensor_sensor_init = true;  // successfully initialized
+	sensor_sensor_scanning = false;  // done
+	set_status(SYS_STATUS_SENSOR_ERROR, false);  // clear error
+	return 0;
 }
 
 static bool main_running = false;
@@ -1363,13 +1366,13 @@ void sensor_debug_mag_info(void) {
 	const sensor_ext_ssi_t* ext_interface = sensor_interface_ext_get();
 	if (ext_interface) {
 		printk("External sensor interface: AVAILABLE\n");
-		printk("External interface max bytes: %d\n", ext_interface->max_bytes);
+		printk("External interface burst size: %d\n", ext_interface->ext_burst);
 	} else {
 		printk("External sensor interface: NOT AVAILABLE\n");
 	}
 
 	// Check if IMU has external support
-#if SENSOR_HAS_EXT(SENSOR_IMU)
+#if SENSOR_MAG_EXT_EXISTS
 	printk("IMU has external sensor support: YES\n");
 #else
 	printk("IMU has external sensor support: NO\n");
