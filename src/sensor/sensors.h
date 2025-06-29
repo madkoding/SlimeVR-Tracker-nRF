@@ -188,7 +188,7 @@ const uint8_t i2c_dev_mag_reg[] = {
 		0x4F,
 	3,	0x20,
 		0x2F,
-		0x39,
+		0x08, // MMC5983MA STATUS register
 	1,	0x00,
 	1,	0x00
 };
@@ -209,8 +209,8 @@ const uint8_t i2c_dev_mag_id[] = {
 	1,	0x3D, // reg 0x0F
 	1,	0x40, // reg 0x4F
 	1,	0x06, // reg 0x20
-	2,	0x0A,0x30, // reg 0x2F
-	2,	0x10,0x11, // reg 0x39
+	2,	0x0A,0x30, // reg 0x2F  
+	1,	0x00, // reg 0x08 - MMC5983MA STATUS register (should read 0x00 initially)
 	1,	0x80, // reg 0x00
 	1,	0x90 // reg 0x00
 };
@@ -231,8 +231,8 @@ const int i2c_dev_mag[] = {
 	MAG_LIS3MDL,
 	MAG_LIS2MDL,
 	MAG_MMC34160PJ,
-	MAG_MMC3630KJ, MAG_MMC5983MA,
-	MAG_MMC5633NJL, MAG_MMC5616WA,
+	MAG_MMC3630KJ, MAG_MMC5983MA, // MMC5983MA detected via STATUS register
+	MAG_MMC5983MA, // MMC5983MA on 0x30 via STATUS register (0x08)
 	MAG_QMC6310,
 	MAG_QMC6309
 };

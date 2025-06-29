@@ -32,8 +32,14 @@ LOG_MODULE_REGISTER(sensor_scan_ext, LOG_LEVEL_DBG);
 
 int sensor_scan_ext(const sensor_ext_ssi_t *ext_ssi, uint16_t *ext_dev_addr, uint8_t *ext_dev_reg, int dev_addr_count, const uint8_t dev_addr[], const uint8_t dev_reg[], const uint8_t dev_id[], const int dev_ids[])
 {
+	LOG_DBG("sensor_scan_ext: Starting external sensor scan");
+	LOG_DBG("sensor_scan_ext: ext_dev_addr=0x%04x, dev_addr_count=%d", *ext_dev_addr, dev_addr_count);
+	
 	if (*ext_dev_addr >= 0x7F) // ignoring device
+	{
+		LOG_DBG("sensor_scan_ext: Ignoring device (addr >= 0x7F)");
 		return -1;
+	}
 
 	uint16_t addr = 0;
 
@@ -53,8 +59,12 @@ int sensor_scan_ext(const sensor_ext_ssi_t *ext_ssi, uint16_t *ext_dev_addr, uin
 		for (int j = 0; j < addr_count; j++)
 		{
 			addr = dev_addr[addr_index + j];
+			LOG_DBG("sensor_scan_ext: Checking addr 0x%02x (target: 0x%04x)", addr, *ext_dev_addr);
 			if (*ext_dev_addr >= SCAN_ADDR_START && *ext_dev_addr <= SCAN_ADDR_STOP && addr != *ext_dev_addr)
+			{
+				LOG_DBG("sensor_scan_ext: Skipping addr 0x%02x (not target)", addr);
 				continue; // if an address was provided try to scan it first
+			}
 			LOG_DBG("Scanning address: 0x%02X", addr);
 
 			int id_cnt = id_count;
@@ -69,18 +79,26 @@ int sensor_scan_ext(const sensor_ext_ssi_t *ext_ssi, uint16_t *ext_dev_addr, uin
 					LOG_DBG("Scanning register: 0x%02X", reg);
 					if (reg == 0x40 && addr >= 0x10 && addr <= 0x13) // edge case for BMM150
 					{
+						LOG_DBG("BMM150 special case: enabling power control");
 						int err = ext_ssi->ext_write(addr, (const uint8_t[]){0x4B, 0x01}, 2); // BMM150 cannot read chip id without power control enabled
 						if (err)
+						{
+							LOG_ERR("Failed to enable BMM150 power control: %d", err);
 							break;
+						}
 						LOG_DBG("Power up BMM150");
 						k_msleep(2); // BMM150 start-up
 					}
 					int err = ext_ssi->ext_write_read(addr, &reg, 1, &id, 1);
-					LOG_DBG("Read value: 0x%02X", id);
+					LOG_DBG("Read addr 0x%02x reg 0x%02x -> value: 0x%02X (err=%d)", addr, reg, id, err);
 					if (err)
+					{
+						LOG_ERR("ext_write_read failed for addr 0x%02x reg 0x%02x: %d", addr, reg, err);
 						break;
+					}
 					for (int l = 0; l < id_cnt; l++)
 					{
+						LOG_DBG("Comparing read ID 0x%02x with expected 0x%02x", id, dev_id[id_ind + l]);
 						if (id == dev_id[id_ind + l])
 						{
 							*ext_dev_addr = addr;

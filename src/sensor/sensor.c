@@ -127,7 +127,7 @@ static const sensor_mag_t *sensor_mag = &sensor_mag_none;
 #if DEBUG
 LOG_MODULE_REGISTER(sensor, LOG_LEVEL_DBG);
 #else
-LOG_MODULE_REGISTER(sensor, LOG_LEVEL_INF);
+LOG_MODULE_REGISTER(sensor, LOG_LEVEL_DBG);  // Cambiado temporalmente para debug
 #endif
 
 static int sensor_scan(void);
@@ -241,6 +241,24 @@ int sensor_scan(void)
 	}
 
 	int mag_id = -1;
+	LOG_DBG("Starting magnetometer scan...");
+#ifdef SENSOR_MAG_SPI_EXISTS
+	LOG_DBG("SENSOR_MAG_SPI_EXISTS: defined");
+#else
+	LOG_DBG("SENSOR_MAG_SPI_EXISTS: not defined");
+#endif
+#ifdef SENSOR_MAG_EXISTS
+	LOG_DBG("SENSOR_MAG_EXISTS: defined");
+#else
+	LOG_DBG("SENSOR_MAG_EXISTS: not defined");
+#endif
+#ifdef SENSOR_MAG_EXT_EXISTS
+	LOG_DBG("SENSOR_MAG_EXT_EXISTS: defined");
+#else
+	LOG_DBG("SENSOR_MAG_EXT_EXISTS: not defined");
+#endif
+	LOG_DBG("sensor_imu_dev.addr: 0x%02X", sensor_imu_dev.addr);
+
 #if SENSOR_MAG_SPI_EXISTS
 	// for SPI scan, set frequency of 10MHz, it will be set later by the driver initialization if needed
 	sensor_mag_spi_dev.config.frequency = MHZ(10);
@@ -285,21 +303,28 @@ int sensor_scan(void)
 #if SENSOR_MAG_EXT_EXISTS
 	if (mag_id < 0 && (sensor_imu_dev.addr & 0x80)) // SPI IMU
 	{
+		LOG_DBG("Attempting external magnetometer scan through IMU sensor hub");
+		LOG_DBG("IMU address: 0x%02x (SPI mode indicated)", sensor_imu_dev.addr);
 		// IMU may support I2CM if the magnetometer is connected through the IMU
 		int err = sensor_imu->ext_setup();
+		LOG_DBG("ext_setup returned: %d", err);
 		if (!err)
 		{
 			LOG_INF("Scanning bus for magnetometer through IMU I2CM");
 			if (sensor_mag_dev.addr > 0x80) // marked as external
 			{
 				sensor_mag_dev.addr &= 0x7F;
+				LOG_DBG("Cleared external flag, now scanning addr: 0x%02x", sensor_mag_dev.addr);
 			}
 			else
 			{
 				sensor_mag_dev.addr = 0x00; // reset magnetometer data
 				sensor_mag_dev_reg = 0xFF;
+				LOG_DBG("Reset magnetometer scan data");
 			}
 			mag_id = sensor_scan_mag_ext(sensor_interface_ext_get(), &sensor_mag_dev.addr, &sensor_mag_dev_reg);
+			LOG_DBG("sensor_scan_mag_ext returned mag_id: %d, addr: 0x%02x, reg: 0x%02x", 
+				mag_id, sensor_mag_dev.addr, sensor_mag_dev_reg);
 			if (mag_id >= 0 && mag_id < (int)ARRAY_SIZE(sensor_mags) && sensor_mags[mag_id] != NULL && sensor_mags[mag_id] != &sensor_mag_none)
 			{
 				err = sensor_interface_register_sensor_mag_ext(sensor_mag_dev.addr, sensor_mags[mag_id]->ext_min_burst, sensor_mags[mag_id]->ext_burst);
@@ -309,8 +334,25 @@ int sensor_scan(void)
 					mag_id = -1;
 					LOG_ERR("Failed to register magnetometer external interface");
 				}
+				else
+				{
+					LOG_INF("Successfully registered external magnetometer");
+				}
+			}
+			else
+			{
+				LOG_DBG("No valid magnetometer found or unsupported mag_id: %d", mag_id);
 			}
 		}
+		else
+		{
+			LOG_ERR("ext_setup failed with error: %d", err);
+		}
+	}
+	else
+	{
+		LOG_DBG("Skipping external magnetometer scan - mag_id: %d, IMU addr: 0x%02x", 
+			mag_id, sensor_imu_dev.addr);
 	}
 #endif
 #if !SENSOR_MAG_SPI_EXISTS && !SENSOR_MAG_EXISTS && !SENSOR_MAG_EXT_EXISTS
