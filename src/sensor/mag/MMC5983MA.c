@@ -145,7 +145,7 @@ void mmc_mag_read(float m[3])
 {
 	int err = 0;
 	uint8_t status = oneshot_trigger_time ? 0x00 : 0x01;
-	int64_t timeout = oneshot_trigger_time + 2; // 2ms timeout
+	int64_t timeout = oneshot_trigger_time + 10; // 10ms timeout (increased from 2ms for better compatibility)
 	if (k_uptime_get() >= timeout) // already passed timeout
 		oneshot_trigger_time = 0;
 	while ((~status & 0x01) && k_uptime_get() < timeout) // wait for oneshot to complete or timeout
