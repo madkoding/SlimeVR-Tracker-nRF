@@ -4,4 +4,3 @@
 /dts-v1/;
 #include "promicro_uf2.dts"
 
-/delete-node/ &i2c0;
