@@ -4,3 +4,9 @@
 /dts-v1/;
 #include "promicro_uf2.dts"
 
+/delete-node/ &imu;
+
+&button0 {
+	gpios = <&gpio1 11 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+};
+

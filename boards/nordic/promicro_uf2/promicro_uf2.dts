@@ -154,6 +154,12 @@
 	pinctrl-1 = <&i2c0_sleep>;
 	pinctrl-names = "default", "sleep";
 
+	imu: imu@0 {
+		compatible = "i2c-device";
+		label = "imu";
+		reg = <0>;
+	};
+
 	mag: mag@0 {
 		compatible = "i2c-device";
 		label = "mag";
