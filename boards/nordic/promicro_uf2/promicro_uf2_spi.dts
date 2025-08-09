@@ -4,4 +4,17 @@
 /dts-v1/;
 #include "promicro_uf2.dts"
 
-/delete-node/ &i2c0;
+// Don't delete I2C, we need it for the magnetometer
+// /delete-node/ &i2c0;
+
+// Override I2C to remove IMU (already commented in base file) and keep only mag
+&i2c0 {
+	/delete-node/ imu;  // Remove IMU from I2C if it exists
+	
+	// Magnetometer stays on I2C
+	mag: mag@0 {
+		compatible = "i2c-device";
+		label = "mag";
+		reg = <0>;
+	};
+};
