@@ -34,7 +34,7 @@
 
 #define SPI_OP SPI_MODE_CPOL | SPI_MODE_CPHA | SPI_WORD_SET(8)
 
-// Umbrales para filtrado de baile
+// Thresholds for dance filtering
 #define MAG_NORM_MIN 0.10f
 #define MAG_NORM_MAX 1.20f
 #define MAG_MAX_GYRO_DPS 800.0f
@@ -42,7 +42,7 @@
 
 #define EMA_GYRO_ALPHA_MIN 0.20f
 #define EMA_GYRO_ALPHA_MAX 0.85f
-#define EMA_GYRO_K 0.0005f  // ganancia vs |g|
+#define EMA_GYRO_K 0.0005f  // gain vs |g|
 #define EMA_GYRO_STEP_MAX 900.0f  // dps/frame
 
 #define EMA_ACCEL_ALPHA_MIN 0.20f
@@ -85,7 +85,7 @@ static void quat_smooth_lerp(
 
 static float q_smooth_prev[4] = {1.0f, 0.0f, 0.0f, 0.0f};
 
-// Estado para inicialización del EMA
+// State for EMA initialization
 static bool ema_g_inited = false;
 static bool ema_a_inited = false;
 
@@ -615,12 +615,12 @@ void sensor_fusion_invalidate(void) {
 	if (sensor_fusion_init) {  // clear fusion gyro offset
 		float g_off[3] = {0};
 		sensor_fusion->set_gyro_bias(g_off);
-		// Reset del suavizado del cuaternión
+		// Reset quaternion smoothing
 		q_smooth_prev[0] = 1.0f;
 		q_smooth_prev[1] = 0.0f;
 		q_smooth_prev[2] = 0.0f;
 		q_smooth_prev[3] = 0.0f;
-		// Reset estado del EMA
+		// Reset EMA state
 		ema_g_inited = false;
 		ema_a_inited = false;
 		sensor_retained_write();
@@ -734,12 +734,12 @@ int sensor_init(void) {
 			accel_actual_time,
 			mag_initial_time
 		);  // TODO: using initial time since mag are not polled at the actual rate
-		// Reset del suavizado del cuaternión al reiniciar fusión
+		// Reset quaternion smoothing on fusion restart
 		q_smooth_prev[0] = 1.0f;
 		q_smooth_prev[1] = 0.0f;
 		q_smooth_prev[2] = 0.0f;
 		q_smooth_prev[3] = 0.0f;
-		// Reset estado del EMA
+		// Reset EMA state
 		ema_g_inited = false;
 		ema_a_inited = false;
 	}
@@ -1018,13 +1018,13 @@ void sensor_loop(void) {
 						ema_a_inited = true;
 					}
 
-					/* Desviación respecto a 1g para detectar saltos/impactos */
+					/* Deviation from 1g to detect jumps/impacts */
 					float a_mag = sqrtf(
 						a_raw[0] * a_raw[0] + a_raw[1] * a_raw[1] + a_raw[2] * a_raw[2]
 					);
 					float a_dev = fabsf(a_mag - 1.0f);
 
-					/* EMA dinámico: quieto = más suave; impacto = menos suavizado */
+					/* Dynamic EMA: stationary = smoother; impact = less smoothing */
 					float ema_alpha_acc
 						= 0.30f
 						+ 0.20f
@@ -1038,7 +1038,7 @@ void sensor_loop(void) {
 						ema_alpha_acc = EMA_ACCEL_ALPHA_MIN;
 					}
 
-					/* Anti-spike amplio para pasos rápidos */
+					/* Wide anti-spike for fast steps */
 					const float a_step_max = EMA_ACCEL_STEP_MAX;  // g/frame
 
 					float a[3];
@@ -1111,7 +1111,7 @@ void sensor_loop(void) {
 					// Giro actual (dps)
 					float gyro_speed = sqrtf(max_gyro_speed_square);
 
-					// Aceleración media del frame para detectar impactos/saltos
+					// Frame average acceleration to detect impacts/jumps
 					float a_avg[3] = {0};
 					if (a_count > 0) {
 						a_avg[0] = a_sum[0] / a_count;
@@ -1177,7 +1177,7 @@ void sensor_loop(void) {
 			sensor_fusion->get_quat(q);
 			q_normalize(q, q);  // safe to use self as output
 
-			// alpha depende de la energía del giro actual
+			// alpha depends on current rotation energy
 			float gyro_speed_out = sqrtf(max_gyro_speed_square);
 			float q_alpha = 0.25f + 0.0005f * gyro_speed_out;  // ~0.25..0.85
 			if (q_alpha > 0.85f) {
@@ -1190,7 +1190,7 @@ void sensor_loop(void) {
 			float q_smoothed[4];
 			quat_smooth_lerp(q_smooth_prev, q, q_alpha, q_smoothed);
 			memcpy(q_smooth_prev, q_smoothed, sizeof(q_smooth_prev));
-			memcpy(q, q_smoothed, sizeof(q));  // usar q suavizado en lin_a y envío
+			memcpy(q, q_smoothed, sizeof(q));  // use smoothed q for lin_a and sending
 
 			// Get linear acceleration // TODO: move to util functions
 			float lin_a[3] = {0};
