@@ -165,6 +165,13 @@ static bool mag_enabled = true;  // TODO: toggle from server
 static bool mag_enabled = false;
 #endif
 
+// Temperature compensation variables
+static float temp_ref = 25.0f;  // Reference temperature (°C)
+static float temp_current = 25.0f;  // Current temperature
+static float gyro_temp_coeff[3]
+	= {0.0f, 0.0f, 0.0f};  // Temperature coefficients (dps/°C)
+static bool temp_calibration_active = false;
+
 #if CONFIG_SENSOR_USE_XIOFUSION
 static const sensor_fusion_t* sensor_fusion
 	= &sensor_fusion_fusion;  // TODO: change from server
@@ -183,6 +190,43 @@ static int sensor_imu_id = -1;
 static int sensor_mag_id = -1;
 static const sensor_imu_t* sensor_imu = &sensor_imu_none;
 static const sensor_mag_t* sensor_mag = &sensor_mag_none;
+
+// Temperature compensation function
+static void apply_temperature_compensation(float temp, float gyro_raw[3]) {
+	temp_current = temp;
+
+	if (!temp_calibration_active) {
+		return;  // Skip if temperature calibration is not active
+	}
+
+	// Apply linear temperature compensation: bias(T) = bias(Tref) + coeff * (T - Tref)
+	float temp_delta = temp - temp_ref;
+	for (int i = 0; i < 3; i++) {
+		gyro_raw[i] -= gyro_temp_coeff[i] * temp_delta;
+	}
+}
+
+// Function to update temperature coefficients (call during calibration)
+static void update_temperature_calibration(float temp, const float gyro_bias[3]) {
+	// Simple method: estimate temperature coefficient from current bias vs reference
+	if (fabsf(temp - temp_ref)
+		> 5.0f) {  // Only update if significant temperature difference
+		float temp_delta = temp - temp_ref;
+		for (int i = 0; i < 3; i++) {
+			// Simple running average of temperature coefficient
+			float coeff_new = gyro_bias[i] / temp_delta;
+			gyro_temp_coeff[i]
+				= gyro_temp_coeff[i] * 0.9f + coeff_new * 0.1f;  // EMA filter
+		}
+		temp_calibration_active = true;
+		LOG_DBG(
+			"Updated gyro temp coefficients: %.3f %.3f %.3f dps/°C",
+			(double)gyro_temp_coeff[0],
+			(double)gyro_temp_coeff[1],
+			(double)gyro_temp_coeff[2]
+		);
+	}
+}
 
 // #define DEBUG true
 
@@ -838,7 +882,7 @@ void sensor_loop(void) {
 			}
 
 			// Read IMU temperature
-			float temp = sensor_imu->temp_read();  // TODO: use as calibration data
+			float temp = sensor_imu->temp_read();
 			connection_update_sensor_temp(temp);
 
 			// Read gyroscope (FIFO)
@@ -933,6 +977,10 @@ void sensor_loop(void) {
 					}
 #endif
 					sensor_calibration_process_gyro(raw_g);
+
+					// Apply temperature compensation
+					apply_temperature_compensation(temp, raw_g);
+
 					float gx = raw_g[0];
 					float gy = raw_g[1];
 					float gz = raw_g[2];
@@ -1413,6 +1461,14 @@ void sensor_loop(void) {
 				LOG_WRN("Last update steps took up to %lld ms", time_delta);
 				max_loop_time = 0;
 			}
+
+			// Update temperature calibration periodically
+			if (sensor_fusion_init) {
+				float gyro_bias[3] = {0};
+				sensor_fusion->get_gyro_bias(gyro_bias);
+				update_temperature_calibration(temp_current, gyro_bias);
+			}
+
 #if DEBUG
 			LOG_DBG(
 				"packets read: %llu, processed: %llu, gyro samples: %llu, accel "
@@ -1433,6 +1489,14 @@ void sensor_loop(void) {
 				(double)total_accel_samples
 					/ (double)k_ticks_to_us_near64(total_acquisition_time) * 1000000.0
 			);
+
+			// Debug temperature compensation
+			if (temp_calibration_active) {
+				LOG_DBG(
+					"Temperature: %.1f°C, Active temp compensation",
+					(double)temp_current
+				);
+			}
 #endif
 		}
 
@@ -1491,10 +1555,29 @@ void main_imu_wakeup(void) {
 
 void main_imu_restart(void) {
 	if (main_ok) {  // only restart fusion if initialized
-		sensor_fusion->init(
-			gyro_actual_time,
-			accel_actual_time,
-			6 / 1000.0f
-		);  // TODO: using default initial time
+		// Use actual magnetometer time if available, otherwise fall back to current
+		// update time
+		float mag_time = (mag_available && mag_enabled)
+						   ? mag_actual_time
+						   : sensor_update_time_ms / 1000.0f;
+
+		sensor_fusion->init(gyro_actual_time, accel_actual_time, mag_time);
+
+		// Reset quaternion smoothing on fusion restart
+		q_smooth_prev[0] = 1.0f;
+		q_smooth_prev[1] = 0.0f;
+		q_smooth_prev[2] = 0.0f;
+		q_smooth_prev[3] = 0.0f;
+
+		// Reset EMA state
+		ema_g_inited = false;
+		ema_a_inited = false;
+
+		// Reset temperature compensation
+		temp_ref = temp_current;  // Use current temperature as new reference
+		for (int i = 0; i < 3; i++) {
+			gyro_temp_coeff[i] = 0.0f;
+		}
+		temp_calibration_active = false;
 	}
 }
