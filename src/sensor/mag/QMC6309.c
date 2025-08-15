@@ -60,7 +60,7 @@
 #define SOFT_RESET_CLEAR 0x00
 
 static const float sensitivity
-	= 1 / 4000.0f;  // ~0.25 mgauss/LSB @ 8G range -> ~0.00025 G/LSB
+	= 1 / 8000.0f;  // ~0.125 mgauss/LSB @ 16G range -> ~0.000125 G/LSB
 
 static uint8_t last_state = 0xff;
 static bool lastOvfl = false;
@@ -135,12 +135,12 @@ int qmc_update_odr(float time, float* actual_time) {
 	int err = ssi_reg_write_byte(
 		SENSOR_INTERFACE_DEV_MAG,
 		QMC6309_CTRL_REG_2,
-		ODR_MASK(MODR) | RNG_MASK(RNG_8G) | SET_RESET_ON
+		ODR_MASK(MODR) | RNG_MASK(RNG_16G) | SET_RESET_ON
 	);
 	err |= ssi_reg_write_byte(
 		SENSOR_INTERFACE_DEV_MAG,
 		QMC6309_CTRL_REG_1,
-		LPF_MASK(LPF_8) | OSR_MASK(OSR_4) | MD
+		LPF_MASK(LPF_2) | OSR_MASK(OSR_8) | MD
 	);
 	if (err) {
 		LOG_ERR("Communication error");
@@ -156,7 +156,7 @@ void qmc_mag_oneshot(void) {
 	int err = ssi_reg_write_byte(
 		SENSOR_INTERFACE_DEV_MAG,
 		QMC6309_CTRL_REG_1,
-		LPF_MASK(LPF_8) | OSR_MASK(OSR_4) | MD_SINGLE
+		LPF_MASK(LPF_2) | OSR_MASK(OSR_8) | MD_SINGLE
 	);
 	oneshot_trigger_time = k_uptime_get();
 	if (err) {

@@ -43,19 +43,19 @@ LOG_MODULE_REGISTER(sensor, LOG_LEVEL_INF);
 #define SPI_OP SPI_MODE_CPOL | SPI_MODE_CPHA | SPI_WORD_SET(8)
 
 // Thresholds for dance filtering
-#define MAG_NORM_MIN 0.10f
-#define MAG_NORM_MAX 1.20f
-#define MAG_MAX_GYRO_DPS 800.0f
-#define MAG_MAX_ADEV_G 0.40f
+#define MAG_NORM_MIN 0.05f
+#define MAG_NORM_MAX 2.00f
+#define MAG_MAX_GYRO_DPS 8000.0f
+#define MAG_MAX_ADEV_G 2.50f
 
 #define EMA_GYRO_ALPHA_MIN 0.20f
 #define EMA_GYRO_ALPHA_MAX 0.85f
 #define EMA_GYRO_K 0.0005f  // gain vs |g|
-#define EMA_GYRO_STEP_MAX 900.0f  // dps/frame
+#define EMA_GYRO_STEP_MAX 3000.0f  // dps/frame
 
 #define EMA_ACCEL_ALPHA_MIN 0.20f
 #define EMA_ACCEL_ALPHA_MAX 0.50f
-#define EMA_ACCEL_STEP_MAX 6.0f  // g/frame
+#define EMA_ACCEL_STEP_MAX 15.0f  // g/frame
 
 static inline void quat_normalize_inline(float q[4]) {
 	float n = sqrtf(q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]);
@@ -172,6 +172,9 @@ static bool mag_enabled = true;  // TODO: toggle from server
 #else
 static bool mag_enabled = false;
 #endif
+
+// Mag filtering control
+static bool mag_filtering_enabled = true;  // Set to false to bypass all mag filters
 
 // Temperature compensation variables
 static float temp_ref = 25.0f;  // Reference temperature (°C)
@@ -1180,7 +1183,32 @@ void sensor_loop(void) {
 							   && (gyro_speed <= MAG_MAX_GYRO_DPS)
 							   && (a_dev_for_gate < MAG_MAX_ADEV_G);
 
-					if (mag_ok) {
+#if DEBUG
+					static int debug_counter = 0;
+					debug_counter++;
+					if (debug_counter % 100 == 0) {  // Debug cada 100 frames
+						LOG_DBG(
+							"Mag filter %s: norm=%.3f [%.3f-%.3f] %s, gyro=%.1f "
+							"[<%.1f] %s, accel_dev=%.3f [<%.3f] %s, final=%s",
+							mag_filtering_enabled ? "ENABLED" : "BYPASSED",
+							(double)mag_norm,
+							(double)MAG_NORM_MIN,
+							(double)MAG_NORM_MAX,
+							(mag_norm >= MAG_NORM_MIN && mag_norm <= MAG_NORM_MAX)
+								? "OK"
+								: "FAIL",
+							(double)gyro_speed,
+							(double)MAG_MAX_GYRO_DPS,
+							(gyro_speed <= MAG_MAX_GYRO_DPS) ? "OK" : "FAIL",
+							(double)a_dev_for_gate,
+							(double)MAG_MAX_ADEV_G,
+							(a_dev_for_gate < MAG_MAX_ADEV_G) ? "OK" : "FAIL",
+							(mag_ok || !mag_filtering_enabled) ? "ACCEPT" : "REJECT"
+						);
+					}
+#endif
+
+					if (mag_ok || !mag_filtering_enabled) {
 						sensor_fusion->update_mag(m, sensor_update_time_ms / 1000.0f);
 					}
 				}
