@@ -180,11 +180,6 @@ int icm45_update_odr(
 		ACCEL_MODE = ACCEL_MODE_LN;
 		int target_odr = (int)(1.0f / accel_time / clock_scale);
 
-		/* clamp accel to 400 Hz máx */
-		if (target_odr > 400) {
-			target_odr = 400;
-		}
-
 		ACCEL_ODR = calculate_odr_setting(
 			target_odr,
 			accel_odr_table,
@@ -208,11 +203,6 @@ int icm45_update_odr(
 	} else {
 		GYRO_MODE = GYRO_MODE_LN;
 		int target_odr = (int)(1.0f / gyro_time / clock_scale);
-
-		/* clamp gyro to 400 Hz máx */
-		if (target_odr > 400) {
-			target_odr = 400;
-		}
 
 		GYRO_ODR = calculate_odr_setting(
 			target_odr,
@@ -446,8 +436,7 @@ uint8_t icm45_setup_WOM(void)  // TODO: check if working
 	);  // set accel and gyro modes
 	ireg_buf[0] = ICM45686_IPREG_SYS2;  // address is a word, icm is big endian
 	ireg_buf[1] = ICM45686_IPREG_SYS2_REG_129;
-	// ireg_buf[2] = 0x00; // set ACCEL_LP_AVG_SEL to 1x
-	ireg_buf[2] = 0x40;  // set ACCEL_LP_AVG_SEL to 4x
+	ireg_buf[2] = 0x00;  // set ACCEL_LP_AVG_SEL to 1x
 	err |= ssi_burst_write(
 		SENSOR_INTERFACE_DEV_IMU,
 		ICM45686_IREG_ADDR_15_8,
