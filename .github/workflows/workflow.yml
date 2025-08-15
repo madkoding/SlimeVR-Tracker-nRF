@@ -22,7 +22,6 @@ jobs:
       fail-fast: false
       matrix:
         boards: [
-                  {boardname: "promicro_uf2/nrf52840/i2c", fileformat: "uf2", filename: "SlimeNRF_ProMicro_I2C_Tracker"},
                   {boardname: "promicro_uf2/nrf52840/spi", fileformat: "uf2", filename: "SlimeNRF_ProMicro_SPI_Tracker"},
                   {boardname: "promicro_uf2/nrf52840/smspi", fileformat: "uf2", filename: "SlimeNRF_ProMicro_smSPI_Tracker"},
                   {boardname: "promicro_uf2/nrf52840/chrysalis", fileformat: "uf2", filename: "SlimeNRF_ProMicro_Chrysalis_Tracker"},
