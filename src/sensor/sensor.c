@@ -32,6 +32,14 @@
 #include "system/system.h"
 #include "util.h"
 
+// #define DEBUG true
+
+#if DEBUG
+LOG_MODULE_REGISTER(sensor, LOG_LEVEL_DBG);
+#else
+LOG_MODULE_REGISTER(sensor, LOG_LEVEL_INF);
+#endif
+
 #define SPI_OP SPI_MODE_CPOL | SPI_MODE_CPHA | SPI_WORD_SET(8)
 
 // Thresholds for dance filtering
@@ -227,14 +235,6 @@ static void update_temperature_calibration(float temp, const float gyro_bias[3])
 		);
 	}
 }
-
-// #define DEBUG true
-
-#if DEBUG
-LOG_MODULE_REGISTER(sensor, LOG_LEVEL_DBG);
-#else
-LOG_MODULE_REGISTER(sensor, LOG_LEVEL_INF);
-#endif
 
 static int sensor_scan(void);
 static int sensor_init(void);
