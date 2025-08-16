@@ -68,20 +68,4 @@
 	cs-gpios = <&gpio0 22 GPIO_ACTIVE_LOW>;
 };
 
-/delete-node/ &i2c0;2024 Nordic Semiconductor ASA
-// SPDX-License-Identifier: Apache-2.0
-
-/dts-v1/;
-#include "promicro_uf2.dts"
-
-// Use same GPIO configuration as master branch (with clk-gpios commented)
-/ {
-	zephyr,user {
-		int0-gpios = <&gpio0 17 0>;
-		led-gpios = <&gpio0 15 GPIO_OPEN_SOURCE>;
-		// clk-gpios = <&gpio0 20 GPIO_OPEN_DRAIN>; // Uncomment and set to
-    vcc-gpios = <&gpio0 31 GPIO_ACTIVE_HIGH>;
-	};
-};
-
 /delete-node/ &i2c0;

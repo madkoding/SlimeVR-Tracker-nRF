@@ -7,6 +7,5 @@ board:
   socs:
     - name: nrf52840
       variants:
-      # - name: 'i2c'
       - name: 'spi'
       - name: 'spi_lsm6dsr'
