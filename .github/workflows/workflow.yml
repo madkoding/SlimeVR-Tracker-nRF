@@ -28,11 +28,6 @@ jobs:
               fileformat: "uf2",
               filename: "SlimeNRF_ProMicro_SPI_Tracker",
             },
-            {
-              boardname: "promicro_uf2/nrf52840/spi_lsm6dsr",
-              fileformat: "uf2",
-              filename: "SlimeNRF_ProMicro_SPI_LSM6DSR_Tracker",
-            },
           ]
     if: always()
     runs-on: ubuntu-latest
