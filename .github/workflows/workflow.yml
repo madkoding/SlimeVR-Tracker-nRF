@@ -28,6 +28,11 @@ jobs:
               fileformat: "uf2",
               filename: "SlimeNRF_ProMicro_SPI_Tracker",
             },
+            {
+              boardname: "promicro_uf2/nrf52840/i2c",
+              fileformat: "uf2",
+              filename: "SlimeNRF_ProMicro_I2C_Tracker",
+            },
           ]
     if: always()
     runs-on: ubuntu-latest
