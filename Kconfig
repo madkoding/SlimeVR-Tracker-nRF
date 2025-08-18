@@ -280,4 +280,31 @@ config RADIO_TX_POWER
         Radio output power level.
         A lower value may reduce power consumption.
 
+config RADIO_RF_CHANNEL
+    int "Radio RF channel"
+    range 0 125
+    default 2
+    help
+        ESB radio frequency channel (0-125).
+        Channel 0 = 2.400 GHz, Channel 125 = 2.525 GHz.
+        Each channel is 1 MHz apart.
+        Default is channel 2 (2.402 GHz).
+
+config RADIO_RETRANSMIT_DELAY
+    int "ESB retransmit delay (microseconds)"
+    range 250 4000
+    default 800
+    help
+        ESB retransmit delay in microseconds.
+        Valid range is 250-4000 µs.
+        This is the base delay before jitter is applied.
+
+config RADIO_RETRANSMIT_COUNT
+    int "ESB retransmit count"
+    range 0 15
+    default 2
+    help
+        Number of automatic retransmission attempts.
+        0 = No retransmissions, 15 = Maximum retransmissions.
+
 source "Kconfig.zephyr"
