@@ -60,7 +60,7 @@ LOG_MODULE_REGISTER(esb_event, LOG_LEVEL_INF);
 static void esb_thread(void);
 K_THREAD_DEFINE(esb_thread_id, 512, esb_thread, NULL, NULL, NULL, 6, 0, 0);
 
-void event_handler(struct esb_evt const* event) {
+void event_handler(struct esb_evt const *event) {
 	switch (event->evt_id) {
 		case ESB_EVENT_TX_SUCCESS:
 			if (tx_errors >= 100) {
@@ -127,7 +127,7 @@ void event_handler(struct esb_evt const* event) {
 bool clock_status = false;
 
 #if defined(CONFIG_CLOCK_CONTROL_NRF)
-static struct onoff_manager* clk_mgr;
+static struct onoff_manager *clk_mgr;
 
 static int clocks_init(void) {
 	clk_mgr = z_nrf_clock_control_get_onoff(CLOCK_CONTROL_NRF_SUBSYS_HF);
