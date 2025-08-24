@@ -247,7 +247,7 @@ config USE_SENSOR_CLOCK
 
 choice
 	prompt "Sensor fusion"
-    default SENSOR_USE_VQF
+    default SENSOR_USE_EKF
     help
         Select the sensor fusion method.
 
