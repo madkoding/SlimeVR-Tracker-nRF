@@ -247,7 +247,7 @@ config USE_SENSOR_CLOCK
 
 choice
 	prompt "Sensor fusion"
-    default SENSOR_USE_VQF
+    default SENSOR_USE_EKF
     help
         Select the sensor fusion method.
 
@@ -262,6 +262,11 @@ config SENSOR_USE_VQF
     help
         Use VQF for sensor fusion.
         Based on Kalman filter.
+
+config SENSOR_USE_EKF
+    bool "Use EKF"
+    help
+        Use an Extended Kalman Filter for sensor fusion.
 
 endchoice
 
