@@ -263,6 +263,11 @@ config SENSOR_USE_VQF
         Use VQF for sensor fusion.
         Based on Kalman filter.
 
+config SENSOR_USE_EKF
+    bool "Use EKF"
+    help
+        Use an Extended Kalman Filter for sensor fusion.
+
 endchoice
 
 config SENSOR_USE_6_SIDE_CALIBRATION
