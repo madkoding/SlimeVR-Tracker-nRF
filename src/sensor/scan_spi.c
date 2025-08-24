@@ -26,7 +26,14 @@
 
 LOG_MODULE_REGISTER(sensor_scan_spi, LOG_LEVEL_DBG);
 
-int sensor_scan_spi(struct spi_dt_spec *bus, uint8_t *spi_dev_reg, int dev_addr_count, const uint8_t dev_reg[], const uint8_t dev_id[], const int dev_ids[])
+int sensor_scan_spi(
+	struct spi_dt_spec *bus,
+	uint8_t *spi_dev_reg,
+	int dev_addr_count,
+	const uint8_t dev_reg[],
+	const uint8_t dev_id[],
+	const int dev_ids[]
+)
 {
 	uint8_t buf[3] = {0};
 	struct spi_buf tx_buf = {.len = 1};
@@ -54,20 +61,33 @@ int sensor_scan_spi(struct spi_dt_spec *bus, uint8_t *spi_dev_reg, int dev_addr_
 			{
 				uint8_t id;
 				tx_buf.buf = &reg;
-				reg |= 0x80; // set read bit
+				reg |= 0x80;  // set read bit
 				LOG_DBG("Scanning register: 0x%02X", reg);
 				// TODO: BMM150 workaround?
 				int err = spi_transceive_dt(bus, &tx, &rx);
-				id = buf[1] ? buf[1] : buf[2]; // ID may be in first byte, or skip one byte (such as BMI270)
-				LOG_DBG("Read value: 0x%02X, 0x%02X, 0x%02X (0x%02X)", buf[0], buf[1], buf[2], id);
+				id = buf[1] ? buf[1] : buf[2];  // ID may be in first byte, or skip one
+												// byte (such as BMI270)
+				LOG_DBG(
+					"Read value: 0x%02X, 0x%02X, 0x%02X (0x%02X)",
+					buf[0],
+					buf[1],
+					buf[2],
+					id
+				);
 				if (err)
+				{
 					continue;
+				}
 				for (int l = 0; l < id_cnt; l++)
 				{
 					if (id == dev_id[id_ind + l])
 					{
 						*spi_dev_reg = reg;
-						LOG_INF("Valid device found using register: 0x%02X (value: 0x%02X)", reg, id);
+						LOG_INF(
+							"Valid device found using register: 0x%02X (value: 0x%02X)",
+							reg,
+							id
+						);
 						return dev_ids[fnd_id + l];
 					}
 				}
@@ -89,11 +109,18 @@ int sensor_scan_spi(struct spi_dt_spec *bus, uint8_t *spi_dev_reg, int dev_addr_
 		}
 	}
 
-	if (*spi_dev_reg != 0xFF) // preferred register failed, try again with full scan
+	if (*spi_dev_reg != 0xFF)  // preferred register failed, try again with full scan
 	{
 		LOG_WRN("No device found using register: 0x%02X", *spi_dev_reg);
 		*spi_dev_reg = 0xFF;
-		return sensor_scan_spi(bus, spi_dev_reg, dev_addr_count, dev_reg, dev_id, dev_ids);
+		return sensor_scan_spi(
+			bus,
+			spi_dev_reg,
+			dev_addr_count,
+			dev_reg,
+			dev_id,
+			dev_ids
+		);
 	}
 
 	return -1;

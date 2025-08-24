@@ -29,13 +29,22 @@
 
 LOG_MODULE_REGISTER(sensor_scan, LOG_LEVEL_INF);
 
-// Any address out of range (00, 7f, etc.) will search all addresses, otherwise it will check provided address and register first
+// Any address out of range (00, 7f, etc.) will search all addresses, otherwise it will
+// check provided address and register first
 
-int sensor_scan_i2c(struct i2c_dt_spec *i2c_dev, uint8_t *i2c_dev_reg, int dev_addr_count, const uint8_t dev_addr[], const uint8_t dev_reg[], const uint8_t dev_id[], const int dev_ids[])
+int sensor_scan_i2c(
+	struct i2c_dt_spec *i2c_dev,
+	uint8_t *i2c_dev_reg,
+	int dev_addr_count,
+	const uint8_t dev_addr[],
+	const uint8_t dev_reg[],
+	const uint8_t dev_id[],
+	const int dev_ids[]
+)
 {
-	if (i2c_dev->addr >= 0x7F) // ignoring device
+	if (i2c_dev->addr >= 0x7F)  // ignoring device
 	{
-//		i2c_dev->addr = 0xFF; // no device found, mark as ignored
+		//		i2c_dev->addr = 0xFF; // no device found, mark as ignored
 		return -1;
 	}
 
@@ -59,15 +68,20 @@ int sensor_scan_i2c(struct i2c_dt_spec *i2c_dev, uint8_t *i2c_dev_reg, int dev_a
 		for (int j = 0; j < addr_count; j++)
 		{
 			addr = dev_addr[addr_index + j];
-//			if (i2c_dev->addr >= SCAN_ADDR_START && i2c_dev->addr <= SCAN_ADDR_STOP && addr < i2c_dev->addr)
-			if (i2c_dev->addr >= SCAN_ADDR_START && i2c_dev->addr <= SCAN_ADDR_STOP && addr != i2c_dev->addr)
-				continue; // if an address was provided try to scan it first
+			//			if (i2c_dev->addr >= SCAN_ADDR_START && i2c_dev->addr <=
+			//SCAN_ADDR_STOP && addr < i2c_dev->addr)
+			if (i2c_dev->addr >= SCAN_ADDR_START && i2c_dev->addr <= SCAN_ADDR_STOP
+				&& addr != i2c_dev->addr)
+			{
+				continue;  // if an address was provided try to scan it first
+			}
 			LOG_DBG("Scanning address: 0x%02X", addr);
 
-			// The first read on ICM-45686 can fail, so perform a dummy read on each address first
+			// The first read on ICM-45686 can fail, so perform a dummy read on each
+			// address first
 			/* AN-000364
 			 * In I2C mode, after chip power-up, the host should perform one retry
-			 * on the very first I2C transaction if it receives a NACK 
+			 * on the very first I2C transaction if it receives a NACK
 			 */
 			uint8_t dummy;
 			i2c_reg_read_byte(dev, addr, 0x00, &dummy);
@@ -82,25 +96,41 @@ int sensor_scan_i2c(struct i2c_dt_spec *i2c_dev, uint8_t *i2c_dev_reg, int dev_a
 				{
 					uint8_t id;
 					LOG_DBG("Scanning register: 0x%02X", reg);
-					if (reg == 0x40 && addr >= 0x10 && addr <= 0x13) // edge case for BMM150
+					if (reg == 0x40 && addr >= 0x10
+						&& addr <= 0x13)  // edge case for BMM150
 					{
-						int err = i2c_reg_write_byte(dev, addr, 0x4B, 0x01); // BMM150 cannot read chip id without power control enabled
+						int err = i2c_reg_write_byte(
+							dev,
+							addr,
+							0x4B,
+							0x01
+						);  // BMM150 cannot read chip id without power control enabled
 						if (err)
+						{
 							break;
+						}
 						LOG_DBG("Power up BMM150");
-						k_msleep(2); // BMM150 start-up
+						k_msleep(2);  // BMM150 start-up
 					}
 					int err = i2c_reg_read_byte(dev, addr, reg, &id);
 					LOG_DBG("Read value: 0x%02X", id);
 					if (err)
+					{
 						break;
+					}
 					for (int l = 0; l < id_cnt; l++)
 					{
 						if (id == dev_id[id_ind + l])
 						{
 							i2c_dev->addr = addr;
 							*i2c_dev_reg = reg;
-							LOG_INF("Valid device found at address: 0x%02X (register: 0x%02X, value: 0x%02X)", addr, reg, id);
+							LOG_INF(
+								"Valid device found at address: 0x%02X (register: "
+								"0x%02X, value: 0x%02X)",
+								addr,
+								reg,
+								id
+							);
 							return dev_ids[fnd_id + l];
 						}
 					}
@@ -124,14 +154,24 @@ int sensor_scan_i2c(struct i2c_dt_spec *i2c_dev, uint8_t *i2c_dev_reg, int dev_a
 		}
 	}
 
-	if ((i2c_dev->addr >= SCAN_ADDR_START && i2c_dev->addr <= SCAN_ADDR_STOP) || *i2c_dev_reg != 0xFF) // preferred address or register failed, try again with full scan
+	if ((i2c_dev->addr >= SCAN_ADDR_START && i2c_dev->addr <= SCAN_ADDR_STOP)
+		|| *i2c_dev_reg != 0xFF)  // preferred address or register failed, try again
+								  // with full scan
 	{
 		LOG_WRN("No device found at address: 0x%02X", i2c_dev->addr);
 		i2c_dev->addr = 0;
 		*i2c_dev_reg = 0xFF;
-		return sensor_scan_i2c(i2c_dev, i2c_dev_reg, dev_addr_count, dev_addr, dev_reg, dev_id, dev_ids);
+		return sensor_scan_i2c(
+			i2c_dev,
+			i2c_dev_reg,
+			dev_addr_count,
+			dev_addr,
+			dev_reg,
+			dev_id,
+			dev_ids
+		);
 	}
 
-	i2c_dev->addr = 0xFF; // no device found, mark as ignored
+	i2c_dev->addr = 0xFF;  // no device found, mark as ignored
 	return -1;
 }

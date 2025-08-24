@@ -32,7 +32,7 @@ static uint64_t init_time;
 
 static int retained_init(void)
 {
-	init_time = k_uptime_ticks(); // Get current uptime in ticks as soon as possible
+	init_time = k_uptime_ticks();  // Get current uptime in ticks as soon as possible
 	return 0;
 }
 
@@ -41,10 +41,14 @@ SYS_INIT(retained_init, APPLICATION, CONFIG_APPLICATION_INIT_PRIORITY);
 
 bool retained_validate(void)
 {
-	NRF_STATIC_ASSERT((RETAINED_CHECKED_SIZE <= 1024), "Retained data size exceeds 1 KB limit");
+	NRF_STATIC_ASSERT(
+		(RETAINED_CHECKED_SIZE <= 1024),
+		"Retained data size exceeds 1 KB limit"
+	);
 
 	uint64_t now = init_time;
-//	uint64_t now = k_uptime_ticks(); // Get current uptime in ticks as soon as possible
+	//	uint64_t now = k_uptime_ticks(); // Get current uptime in ticks as soon as
+	//possible
 
 	/* The residue of a CRC is what you get from the CRC over the
 	 * message catenated with its CRC.  This is the post-final-xor
@@ -52,8 +56,7 @@ bool retained_validate(void)
 	 * crc32_ieee.
 	 */
 	const uint32_t residue = 0x2144df1c;
-	uint32_t crc = crc32_ieee((const uint8_t *)retained,
-				  RETAINED_CHECKED_SIZE);
+	uint32_t crc = crc32_ieee((const uint8_t *)retained, RETAINED_CHECKED_SIZE);
 	bool valid = (crc == residue);
 
 	/* Check the build timestamp of the firmware that last updated
@@ -64,7 +67,8 @@ bool retained_validate(void)
 	/* If the CRC isn't valid or the build timestamp is different
 	 * from the current build timestamp, reset the retained data.
 	 */
-	if (!valid) {
+	if (!valid)
+	{
 		memset(retained, 0, sizeof(struct retained_data));
 		retained->build_timestamp = BUILD_TIMESTAMP;
 	}
@@ -83,8 +87,7 @@ void retained_update(void)
 	retained->uptime_sum += (now - retained->uptime_latest);
 	retained->uptime_latest = now;
 
-	uint32_t crc = crc32_ieee((const uint8_t *)retained,
-				  RETAINED_CRC_OFFSET);
+	uint32_t crc = crc32_ieee((const uint8_t *)retained, RETAINED_CRC_OFFSET);
 
 	retained->crc = sys_cpu_to_le32(crc);
 }

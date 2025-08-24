@@ -29,7 +29,8 @@ int battery_sample(void);
  * #lvl_pptt set to zero.  Both #lvl_pptt and #lvl_mV should be
  * monotonic decreasing within the sequence.
  */
-struct battery_level_point {
+struct battery_level_point
+{
 	/** Remaining life at #lvl_mV. */
 	uint16_t lvl_pptt;
 
@@ -48,10 +49,10 @@ struct battery_level_point {
  * thousand.
  */
 unsigned int
-battery_level_pptt(unsigned int batt_mV, const struct battery_level_point* curve);
+battery_level_pptt(unsigned int batt_mV, const struct battery_level_point *curve);
 
 unsigned int read_batt(void);
 
-unsigned int read_batt_mV(int* out);
+unsigned int read_batt_mV(int *out);
 
 #endif /* APPLICATION_BATTERY_H_ */

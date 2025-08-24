@@ -5,7 +5,7 @@
 
 #include "battery_tracker.h"
 
-//#define DEBUG true
+// #define DEBUG true
 
 LOG_MODULE_REGISTER(battery_tracker, LOG_LEVEL_INF);
 
@@ -27,7 +27,9 @@ struct battery_tracker_interval
 static void update_statistics(void)
 {
 	if (retained->max_battery_pptt - retained->min_battery_pptt < 1000)
+	{
 		return;
+	}
 
 	// save last statistics
 	struct battery_tracker tracker;
@@ -36,7 +38,12 @@ static void update_statistics(void)
 	tracker.last_battery_runtime = retained->battery_runtime_sum;
 
 	sys_write(BATT_STATS_LAST_RUN_ID, NULL, &tracker, sizeof(tracker));
-	LOG_DBG("Discharge: %6.2f%% -> %5.2f%%, %llu us", (double)tracker.last_max_battery_pptt / 100.0, (double)tracker.last_min_battery_pptt / 100.0, k_ticks_to_us_floor64(tracker.last_battery_runtime));
+	LOG_DBG(
+		"Discharge: %6.2f%% -> %5.2f%%, %llu us",
+		(double)tracker.last_max_battery_pptt / 100.0,
+		(double)tracker.last_min_battery_pptt / 100.0,
+		k_ticks_to_us_floor64(tracker.last_battery_runtime)
+	);
 }
 
 static void update_runtime(void)
@@ -48,28 +55,40 @@ static void update_runtime(void)
 
 static void reset_tracker(int16_t pptt)
 {
-	update_runtime(); // update battery_runtime_sum before resetting
+	update_runtime();  // update battery_runtime_sum before resetting
 
-	retained->max_battery_pptt = pptt; // reset
+	retained->max_battery_pptt = pptt;  // reset
 	retained->min_battery_pptt = pptt;
 	retained->battery_runtime_sum = 0;
 	retained->battery_runtime_saved = 0;
 	retained->battery_pptt_saved = (pptt + 499) / 500 * 500;
 	if (pptt >= 0)
-		LOG_DBG("Reset battery tracker, start tracking below %.2f%% (valid below %.2f%%)", (double)(retained->battery_pptt_saved - 500) / 100.0, (double)(pptt - 300) / 100.0);
+	{
+		LOG_DBG(
+			"Reset battery tracker, start tracking below %.2f%% (valid below %.2f%%)",
+			(double)(retained->battery_pptt_saved - 500) / 100.0,
+			(double)(pptt - 300) / 100.0
+		);
+	}
 	else
+	{
 		LOG_DBG("Reset battery tracker");
+	}
 }
 
 static void update_interval(int16_t pptt)
 {
-	update_runtime(); // update battery_runtime_sum before saving
+	update_runtime();  // update battery_runtime_sum before saving
 
 	uint8_t interval_id = (pptt + 499) / 500;
 	uint64_t runtime = retained->battery_runtime_sum - retained->battery_runtime_saved;
 	if (runtime < CONFIG_SYS_CLOCK_TICKS_PER_SEC * 300)
 	{
-		LOG_ERR("Interval %u: %llu us is too short", interval_id, k_ticks_to_us_floor64(runtime));
+		LOG_ERR(
+			"Interval %u: %llu us is too short",
+			interval_id,
+			k_ticks_to_us_floor64(runtime)
+		);
 		return;
 	}
 
@@ -80,24 +99,39 @@ static void update_interval(int16_t pptt)
 	interval.cycles++;
 	interval.runtime += runtime;
 	if (runtime < interval.runtime_min || interval.runtime_min == 0)
+	{
 		interval.runtime_min = runtime;
+	}
 	if (runtime > interval.runtime_max)
+	{
 		interval.runtime_max = runtime;
+	}
 	sys_write(BATT_STATS_INTERVAL_0 + interval_id, NULL, &interval, sizeof(interval));
-	LOG_DBG("Interval %u: %u cycles, %llu us (current: %llu us, min: %llu us, max: %llu us)", interval_id, interval.cycles, k_ticks_to_us_floor64(interval.runtime), k_ticks_to_us_floor64(runtime), k_ticks_to_us_floor64(interval.runtime_min), k_ticks_to_us_floor64(interval.runtime_max));
+	LOG_DBG(
+		"Interval %u: %u cycles, %llu us (current: %llu us, min: %llu us, max: %llu "
+		"us)",
+		interval_id,
+		interval.cycles,
+		k_ticks_to_us_floor64(interval.runtime),
+		k_ticks_to_us_floor64(runtime),
+		k_ticks_to_us_floor64(interval.runtime_min),
+		k_ticks_to_us_floor64(interval.runtime_max)
+	);
 }
 
 static void update_tracker(int16_t pptt)
 {
 	if (pptt < retained->min_battery_pptt)
-		retained->min_battery_pptt = pptt;
-
-	if (pptt <= retained->max_battery_pptt - 300) // valid pptt
 	{
-		if (pptt <= retained->battery_pptt_saved - 500) // new interval
+		retained->min_battery_pptt = pptt;
+	}
+
+	if (pptt <= retained->max_battery_pptt - 300)  // valid pptt
+	{
+		if (pptt <= retained->battery_pptt_saved - 500)  // new interval
 		{
 			LOG_INF("New interval: %.2f%%", (double)pptt / 100.0);
-			if (pptt <= retained->max_battery_pptt - 800) // valid interval
+			if (pptt <= retained->max_battery_pptt - 800)  // valid interval
 			{
 				LOG_INF("Update interval: %.2f%%", (double)pptt / 100.0);
 				update_interval(pptt);
@@ -110,7 +144,7 @@ static void update_tracker(int16_t pptt)
 
 static void update_curve(void)
 {
-	uint64_t* intervals = (uint64_t*)k_malloc(sizeof(uint64_t) * 19);
+	uint64_t *intervals = (uint64_t *)k_malloc(sizeof(uint64_t) * 19);
 	uint64_t curve_runtime = 0;
 
 	int8_t first_valid = -1;
@@ -123,7 +157,12 @@ static void update_curve(void)
 		struct battery_tracker_interval interval;
 		sys_read(BATT_STATS_INTERVAL_0 + i, &interval, sizeof(interval));
 #if DEBUG
-		LOG_DBG("Interval %u: %u cycles, %llu us", i, interval.cycles, k_ticks_to_us_floor64(interval.runtime));
+		LOG_DBG(
+			"Interval %u: %u cycles, %llu us",
+			i,
+			interval.cycles,
+			k_ticks_to_us_floor64(interval.runtime)
+		);
 #endif
 		if (interval.cycles > 0)
 		{
@@ -131,10 +170,13 @@ static void update_curve(void)
 			intervals[i] = interval_runtime;
 			curve_runtime += interval_runtime;
 			if (first_valid < 0)
+			{
 				first_valid = i;
+			}
 			last_valid = i;
 			valid_intervals++;
-			// the valid intervals should be continuous, if there is a gap the average is used instead
+			// the valid intervals should be continuous, if there is a gap the average
+			// is used instead
 		}
 		else
 		{
@@ -142,14 +184,14 @@ static void update_curve(void)
 		}
 	}
 
-	if (valid_intervals < 2 || first_valid < 0) // not enough data
+	if (valid_intervals < 2 || first_valid < 0)  // not enough data
 	{
 		LOG_WRN("Not enough data to calculate discharge curve");
 		k_free(intervals);
 		return;
 	}
 
-	int16_t* curve = (int16_t*)k_malloc(sizeof(int16_t) * 18);
+	int16_t *curve = (int16_t *)k_malloc(sizeof(int16_t) * 18);
 	memset(curve, 0, sizeof(int16_t) * 18);
 	uint64_t runtime = 0;
 
@@ -167,19 +209,31 @@ static void update_curve(void)
 		runtime += intervals[i] ? intervals[i] : average_runtime;
 		curve[i] = runtime * curve_size / curve_runtime + curve_start;
 #if DEBUG
-		LOG_DBG("Map %5.2f%% -> %5.2f%%, %llu us", (i + 1) * 5.0, (double)curve[i] / 100.0, k_ticks_to_us_floor64(intervals[i]));
+		LOG_DBG(
+			"Map %5.2f%% -> %5.2f%%, %llu us",
+			(i + 1) * 5.0,
+			(double)curve[i] / 100.0,
+			k_ticks_to_us_floor64(intervals[i])
+		);
 #endif
 	}
 	k_free(intervals);
 
-	sys_write(BATT_STATS_CURVE_ID, retained->battery_pptt_curve, curve, sizeof(int16_t) * 18);
+	sys_write(
+		BATT_STATS_CURVE_ID,
+		retained->battery_pptt_curve,
+		curve,
+		sizeof(int16_t) * 18
+	);
 	k_free(curve);
 }
 
 static int16_t apply_curve(int16_t pptt)
 {
-	uint8_t interval_id = pptt / 500; // above point
-	int16_t pb = (interval_id > 0 && interval_id < 19) ? retained->battery_pptt_curve[interval_id - 1] : 0;
+	uint8_t interval_id = pptt / 500;  // above point
+	int16_t pb = (interval_id > 0 && interval_id < 19)
+				   ? retained->battery_pptt_curve[interval_id - 1]
+				   : 0;
 	pb = pb ? pb : interval_id * 500;
 	int16_t pa = (interval_id < 18) ? retained->battery_pptt_curve[interval_id] : 0;
 	pa = pa ? pa : (interval_id + 1) * 500;
@@ -188,7 +242,7 @@ static int16_t apply_curve(int16_t pptt)
 		LOG_ERR("Invalid curve");
 		return pptt;
 	}
-	return (int32_t)(pptt % 500) * (pa - pb) / 500 + pb; // linear interpolation
+	return (int32_t)(pptt % 500) * (pa - pb) / 500 + pb;  // linear interpolation
 }
 
 static int last_mV = -1;
@@ -214,7 +268,7 @@ void sys_update_battery_tracker(int16_t pptt, bool plugged)
 {
 	if (plugged)
 	{
-		last_saved_pptt = -1; // reset saved pptt
+		last_saved_pptt = -1;  // reset saved pptt
 	}
 	else
 	{
@@ -228,47 +282,75 @@ void sys_update_battery_tracker(int16_t pptt, bool plugged)
 		}
 	}
 
-	if (plugged && retained->min_battery_pptt >= 0) // reset tracker while plugged
+	if (plugged && retained->min_battery_pptt >= 0)  // reset tracker while plugged
 	{
 		LOG_INF("Tracker reset");
 		update_statistics();
 		reset_tracker(-1);
-		update_curve(); // recalculate curve for next discharge
+		update_curve();  // recalculate curve for next discharge
 	}
-	else if (!plugged && retained->min_battery_pptt < 0) // unplugged, reinitialize tracker
+	else if (!plugged
+			 && retained->min_battery_pptt < 0)  // unplugged, reinitialize tracker
 	{
 		LOG_INF("Tracker initialized: %6.2f%%", (double)pptt / 100.0);
 		reset_tracker(pptt);
 	}
 	if (!plugged && pptt >= 0)
 	{
-		if (pptt < retained->min_battery_pptt - 100) // discharge (caused by long shutdown) event
+		if (pptt < retained->min_battery_pptt
+					   - 100)  // discharge (caused by long shutdown) event
 		{
-			LOG_WRN("Unaccounted change to battery SOC: %5.2f%% (min) -> %5.2f%% ", (double)retained->min_battery_pptt / 100.0, (double)pptt / 100.0);
+			LOG_WRN(
+				"Unaccounted change to battery SOC: %5.2f%% (min) -> %5.2f%% ",
+				(double)retained->min_battery_pptt / 100.0,
+				(double)pptt / 100.0
+			);
 			update_statistics();
 			reset_tracker(pptt);
 		}
-		else if (pptt > retained->min_battery_pptt + 100) // possible charge (should not happen!) event
+		else if (pptt > retained->min_battery_pptt
+							+ 100)  // possible charge (should not happen!) event
 		{
-			LOG_ERR("Abnormal change to battery SOC: %5.2f%% (min) -> %5.2f%% ", (double)retained->min_battery_pptt / 100.0, (double)pptt / 100.0);
+			LOG_ERR(
+				"Abnormal change to battery SOC: %5.2f%% (min) -> %5.2f%% ",
+				(double)retained->min_battery_pptt / 100.0,
+				(double)pptt / 100.0
+			);
 			update_statistics();
 			reset_tracker(pptt);
-			update_curve(); // it is also possible for a device to have no usable charge indicators
+			update_curve();  // it is also possible for a device to have no usable
+							 // charge indicators
 		}
-		else if (pptt > retained->max_battery_pptt + 100) // charge (should not happen!) event // TODO: what is a good threshold
+		else if (pptt > retained->max_battery_pptt
+							+ 100)  // charge (should not happen!) event // TODO: what
+									// is a good threshold
 		{
-			LOG_ERR("Abnormal change to battery SOC: %5.2f%% (max) -> %6.2f%% ", (double)retained->max_battery_pptt / 100.0, (double)pptt / 100.0);
+			LOG_ERR(
+				"Abnormal change to battery SOC: %5.2f%% (max) -> %6.2f%% ",
+				(double)retained->max_battery_pptt / 100.0,
+				(double)pptt / 100.0
+			);
 			update_statistics();
 			reset_tracker(pptt);
 		}
-		else if (last_saved_pptt != -1 && pptt < last_saved_pptt - 100 && k_uptime_ticks() - last_saved_time <= CONFIG_SYS_CLOCK_TICKS_PER_SEC * 60) // rapid "discharge" (ex. after unplugging)
+		else if (last_saved_pptt != -1 && pptt < last_saved_pptt - 100
+				 && k_uptime_ticks() - last_saved_time
+						<= CONFIG_SYS_CLOCK_TICKS_PER_SEC
+							   * 60)  // rapid "discharge" (ex. after unplugging)
 		{
 			uint64_t now = k_uptime_ticks();
 			uint64_t delta = k_ticks_to_us_floor64(now - last_saved_time);
-			LOG_INF("Abnormal change to battery SOC: %5.2f%%/min (%5.2f%% -> %5.2f%% in %llu us)", (double)(pptt - last_saved_pptt) / 100.0 / ((double)delta / 60000000), (double)last_saved_pptt / 100.0, (double)pptt / 100.0, delta);
+			LOG_INF(
+				"Abnormal change to battery SOC: %5.2f%%/min (%5.2f%% -> %5.2f%% in "
+				"%llu us)",
+				(double)(pptt - last_saved_pptt) / 100.0 / ((double)delta / 60000000),
+				(double)last_saved_pptt / 100.0,
+				(double)pptt / 100.0,
+				delta
+			);
 			update_statistics();
 			reset_tracker(pptt);
-			last_saved_pptt = pptt; // reset saved pptt
+			last_saved_pptt = pptt;  // reset saved pptt
 			last_saved_time = now;
 		}
 		else
@@ -287,33 +369,28 @@ static int16_t last_calibrated_battery_pptt = -1;
 int16_t sys_get_calibrated_battery_pptt(int16_t pptt)
 {
 	if (pptt == last_pptt)
+	{
 		return last_calibrated_battery_pptt;
+	}
 	last_pptt = pptt;
 	last_calibrated_battery_pptt = apply_curve(pptt);
 	return last_calibrated_battery_pptt;
 }
 
-int sys_get_battery_mV(void)
-{
-	return last_mV;
-}
+int sys_get_battery_mV(void) { return last_mV; }
 
 int sys_get_valid_battery_mV(void)
 {
 	if (last_unplugged_mV > 1500 && last_unplugged_mV <= 6000)
+	{
 		return last_unplugged_mV;
+	}
 	return -1;
 }
 
-int16_t sys_get_valid_battery_pptt(void)
-{
-	return last_unplugged_pptt;
-}
+int16_t sys_get_valid_battery_pptt(void) { return last_unplugged_pptt; }
 
-uint64_t sys_get_last_unplugged_time(void)
-{
-	return last_unplugged_time;
-}
+uint64_t sys_get_last_unplugged_time(void) { return last_unplugged_time; }
 
 uint64_t sys_get_battery_runtime_estimate(void)
 {
@@ -325,7 +402,12 @@ uint64_t sys_get_battery_runtime_estimate(void)
 		struct battery_tracker_interval interval;
 		sys_read(BATT_STATS_INTERVAL_0 + i, &interval, sizeof(interval));
 #if DEBUG
-		LOG_DBG("Interval %u: %u cycles, %llu us", i, interval.cycles, k_ticks_to_us_floor64(interval.runtime));
+		LOG_DBG(
+			"Interval %u: %u cycles, %llu us",
+			i,
+			interval.cycles,
+			k_ticks_to_us_floor64(interval.runtime)
+		);
 #endif
 		if (interval.cycles > 0)
 		{
@@ -335,10 +417,17 @@ uint64_t sys_get_battery_runtime_estimate(void)
 	}
 
 	if (valid_intervals == 0)
-		return 0; // no valid intervals
+	{
+		return 0;  // no valid intervals
+	}
 
-	runtime += runtime * (20 - valid_intervals) / valid_intervals; // extrapolate missing intervals
-	LOG_DBG("Estimated runtime %llu us, %u%% coverage", k_ticks_to_us_floor64(runtime), valid_intervals * 100 / 20);
+	runtime += runtime * (20 - valid_intervals)
+			 / valid_intervals;  // extrapolate missing intervals
+	LOG_DBG(
+		"Estimated runtime %llu us, %u%% coverage",
+		k_ticks_to_us_floor64(runtime),
+		valid_intervals * 100 / 20
+	);
 
 	return runtime;
 }
@@ -353,7 +442,11 @@ uint64_t sys_get_battery_runtime_min_estimate(void)
 		struct battery_tracker_interval interval;
 		sys_read(BATT_STATS_INTERVAL_0 + i, &interval, sizeof(interval));
 #if DEBUG
-		LOG_DBG("Interval %u min: %llu us", i, k_ticks_to_us_floor64(interval.runtime_min));
+		LOG_DBG(
+			"Interval %u min: %llu us",
+			i,
+			k_ticks_to_us_floor64(interval.runtime_min)
+		);
 #endif
 		if (interval.cycles > 0)
 		{
@@ -363,10 +456,17 @@ uint64_t sys_get_battery_runtime_min_estimate(void)
 	}
 
 	if (valid_intervals == 0)
-		return 0; // no valid intervals
+	{
+		return 0;  // no valid intervals
+	}
 
-	runtime += runtime * (20 - valid_intervals) / valid_intervals; // extrapolate missing intervals
-	LOG_DBG("Estimated runtime min %llu us, %u%% coverage", k_ticks_to_us_floor64(runtime), valid_intervals * 100 / 20);
+	runtime += runtime * (20 - valid_intervals)
+			 / valid_intervals;  // extrapolate missing intervals
+	LOG_DBG(
+		"Estimated runtime min %llu us, %u%% coverage",
+		k_ticks_to_us_floor64(runtime),
+		valid_intervals * 100 / 20
+	);
 
 	return runtime;
 }
@@ -381,7 +481,11 @@ uint64_t sys_get_battery_runtime_max_estimate(void)
 		struct battery_tracker_interval interval;
 		sys_read(BATT_STATS_INTERVAL_0 + i, &interval, sizeof(interval));
 #if DEBUG
-		LOG_DBG("Interval %u max: %llu us", i, k_ticks_to_us_floor64(interval.runtime_max));
+		LOG_DBG(
+			"Interval %u max: %llu us",
+			i,
+			k_ticks_to_us_floor64(interval.runtime_max)
+		);
 #endif
 		if (interval.cycles > 0)
 		{
@@ -391,30 +495,46 @@ uint64_t sys_get_battery_runtime_max_estimate(void)
 	}
 
 	if (valid_intervals == 0)
-		return 0; // no valid intervals
+	{
+		return 0;  // no valid intervals
+	}
 
-	runtime += runtime * (20 - valid_intervals) / valid_intervals; // extrapolate missing intervals
-	LOG_DBG("Estimated runtime max %llu us, %u%% coverage", k_ticks_to_us_floor64(runtime), valid_intervals * 100 / 20);
+	runtime += runtime * (20 - valid_intervals)
+			 / valid_intervals;  // extrapolate missing intervals
+	LOG_DBG(
+		"Estimated runtime max %llu us, %u%% coverage",
+		k_ticks_to_us_floor64(runtime),
+		valid_intervals * 100 / 20
+	);
 
 	return runtime;
 }
 
 uint64_t sys_get_battery_remaining_time_estimate(void)
 {
-	if (last_unplugged_runtime <= CONFIG_SYS_CLOCK_TICKS_PER_SEC * 60) // pptt may not be valid yet
-		return 0; // no valid pptt
+	if (last_unplugged_runtime
+		<= CONFIG_SYS_CLOCK_TICKS_PER_SEC * 60)  // pptt may not be valid yet
+	{
+		return 0;  // no valid pptt
+	}
 
 	uint64_t runtime = sys_get_battery_runtime_estimate();
 	if (runtime == 0)
-		return 0; // no valid runtime
+	{
+		return 0;  // no valid runtime
+	}
 
 	int16_t pptt = sys_get_valid_battery_pptt();
 	if (pptt < 0)
-		return 0; // no valid pptt
+	{
+		return 0;  // no valid pptt
+	}
 
 	pptt = sys_get_calibrated_battery_pptt(pptt);
 	if (pptt < 0)
+	{
 		return 0;
+	}
 
 	return runtime * pptt / 10000;
 }
@@ -428,7 +548,12 @@ float sys_get_battery_cycles(void)
 		struct battery_tracker_interval interval;
 		sys_read(BATT_STATS_INTERVAL_0 + i, &interval, sizeof(interval));
 #if DEBUG
-		LOG_DBG("Interval %u: %u cycles, %llu us", i, interval.cycles, k_ticks_to_us_floor64(interval.runtime));
+		LOG_DBG(
+			"Interval %u: %u cycles, %llu us",
+			i,
+			interval.cycles,
+			k_ticks_to_us_floor64(interval.runtime)
+		);
 #endif
 		cycles += interval.cycles;
 	}
@@ -445,10 +570,12 @@ float sys_get_battery_calibration_coverage(void)
 		struct battery_tracker_interval interval;
 		sys_read(BATT_STATS_INTERVAL_0 + i, &interval, sizeof(interval));
 		if (interval.cycles > 0)
+		{
 			valid_intervals++;
+		}
 	}
 
-	return valid_intervals * (100 / 20) / 100.0f; // maximum coverage is 95%
+	return valid_intervals * (100 / 20) / 100.0f;  // maximum coverage is 95%
 }
 
 int16_t sys_get_calibrated_battery_range_min_pptt(void)
@@ -456,7 +583,9 @@ int16_t sys_get_calibrated_battery_range_min_pptt(void)
 	for (uint8_t i = 0; i < 18; i++)
 	{
 		if (retained->battery_pptt_curve[i] > 0)
+		{
 			return i * 500;
+		}
 	}
 	return -1;
 }
@@ -466,7 +595,9 @@ int16_t sys_get_calibrated_battery_range_max_pptt(void)
 	for (uint8_t i = 17; i >= 0; i--)
 	{
 		if (retained->battery_pptt_curve[i] > 0)
+		{
 			return (i + 2) * 500;
+		}
 	}
 	return -1;
 }
@@ -476,7 +607,9 @@ int16_t sys_get_last_cycle_min_pptt(void)
 	struct battery_tracker tracker;
 	sys_read(BATT_STATS_LAST_RUN_ID, &tracker, sizeof(tracker));
 	if (tracker.last_min_battery_pptt < 0)
+	{
 		return -1;
+	}
 	return tracker.last_min_battery_pptt;
 }
 
@@ -485,7 +618,9 @@ int16_t sys_get_last_cycle_max_pptt(void)
 	struct battery_tracker tracker;
 	sys_read(BATT_STATS_LAST_RUN_ID, &tracker, sizeof(tracker));
 	if (tracker.last_max_battery_pptt < 0)
+	{
 		return -1;
+	}
 	return tracker.last_max_battery_pptt;
 }
 
@@ -494,7 +629,9 @@ uint64_t sys_get_last_cycle_runtime(void)
 	struct battery_tracker tracker;
 	sys_read(BATT_STATS_LAST_RUN_ID, &tracker, sizeof(tracker));
 	if (tracker.last_battery_runtime < 0)
+	{
 		return 0;
+	}
 	return tracker.last_battery_runtime;
 }
 
@@ -503,7 +640,10 @@ void sys_reset_battery_tracker(void)
 	static bool reset_confirm = false;
 	if (!reset_confirm)
 	{
-		printk("Resetting battery tracker will clear all battery calibration data. Are you sure?\n");
+		printk(
+			"Resetting battery tracker will clear all battery calibration data. Are "
+			"you sure?\n"
+		);
 		reset_confirm = true;
 		return;
 	}
@@ -517,9 +657,14 @@ void sys_reset_battery_tracker(void)
 		struct battery_tracker_interval interval = {0};
 		sys_write(BATT_STATS_INTERVAL_0 + i, NULL, &interval, sizeof(interval));
 	}
-	int16_t* curve = (int16_t*)k_malloc(sizeof(int16_t) * 18);
+	int16_t *curve = (int16_t *)k_malloc(sizeof(int16_t) * 18);
 	memset(curve, 0, sizeof(int16_t) * 18);
-	sys_write(BATT_STATS_CURVE_ID, retained->battery_pptt_curve, curve, sizeof(int16_t) * 18); // updates retained
+	sys_write(
+		BATT_STATS_CURVE_ID,
+		retained->battery_pptt_curve,
+		curve,
+		sizeof(int16_t) * 18
+	);  // updates retained
 	k_free(curve);
 	reset_confirm = false;
 	LOG_INF("Battery tracker reset");

@@ -28,11 +28,18 @@
 #include "vqf/vqf.h"
 #include "xiofusion/xiofusion.h"
 
-enum fusion { FUSION_NONE, FUSION_FUSION, FUSION_MOTIONSENSE, FUSION_VQF, FUSION_EKF };
+enum fusion
+{
+	FUSION_NONE,
+	FUSION_FUSION,
+	FUSION_MOTIONSENSE,
+	FUSION_VQF,
+	FUSION_EKF
+};
 
-const char* fusion_names[]
+const char *fusion_names[]
 	= {"None", "x-io Technologies Fusion", "NXP SensorFusion", "VQF", "EKF"};
-const sensor_fusion_t* sensor_fusions[]
+const sensor_fusion_t *sensor_fusions[]
 	= {NULL,
 	   &sensor_fusion_fusion,
 	   &sensor_fusion_motionsense,

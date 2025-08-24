@@ -28,22 +28,22 @@
 void ekf_update_sensor_ids(int imu);
 
 void ekf_init(float g_time, float a_time, float m_time);
-void ekf_load(const void* data);
-void ekf_save(void* data);
+void ekf_load(const void *data);
+void ekf_save(void *data);
 
-void ekf_update_gyro(float* g, float time);
-void ekf_update_accel(float* a, float time);
-void ekf_update_mag(float* m, float time);
-void ekf_update(float* g, float* a, float* m, float time);
+void ekf_update_gyro(const float *g, float time);
+void ekf_update_accel(const float *a, float time);
+void ekf_update_mag(const float *m, float time);
+void ekf_update(const float *g, const float *a, const float *m, float time);
 
-void ekf_get_gyro_bias(float* g_off);
-void ekf_set_gyro_bias(float* g_off);
+void ekf_get_gyro_bias(float *g_off);
+void ekf_set_gyro_bias(const float *g_off);
 
-void ekf_update_gyro_sanity(float* g, float* m);
+void ekf_update_gyro_sanity(const float *g, const float *m);
 int ekf_get_gyro_sanity(void);
 
-void ekf_get_lin_a(float* lin_a);
-void ekf_get_quat(float* q);
+void ekf_get_lin_a(float *lin_a);
+void ekf_get_quat(float *q);
 
 extern const sensor_fusion_t sensor_fusion_ekf;
 

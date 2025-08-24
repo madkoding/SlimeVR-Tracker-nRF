@@ -43,7 +43,7 @@ void sensor_calibration_clear(float *a_bias, float *g_bias, bool write);
 #if CONFIG_SENSOR_USE_6_SIDE_CALIBRATION
 void sensor_calibration_clear_6_side(float a_inv[][3], bool write);
 #endif
-void sensor_calibration_clear_mag(float m_inv[][3], bool write); // "request" mag cal
+void sensor_calibration_clear_mag(float m_inv[][3], bool write);  // "request" mag cal
 
 void sensor_request_calibration(void);
 void sensor_request_calibration_6_side(void);

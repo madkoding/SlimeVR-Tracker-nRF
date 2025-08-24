@@ -142,8 +142,10 @@ static uint8_t get_server_constant_tracker_status(int status) __attribute__((unu
 #define FW_MCU 0
 #endif
 
-static uint8_t get_server_constant_imu_id(int id) {
-	switch (id) {
+static uint8_t get_server_constant_imu_id(int id)
+{
+	switch (id)
+	{
 		case IMU_BMI160:
 			return SVR_IMU_BMI160;
 		case IMU_BMI270:
@@ -189,10 +191,14 @@ static uint8_t get_server_constant_imu_id(int id) {
 #else
 #define SVR_MAG_STATUS SVR_MAG_STATUS_DISABLED
 #endif
-static uint8_t get_server_constant_mag_id(int id) {
-	if (id < 0) {
+static uint8_t get_server_constant_mag_id(int id)
+{
+	if (id < 0)
+	{
 		return SVR_MAG_STATUS_NOT_SUPPORTED;
-	} else {
+	}
+	else
+	{
 		return SVR_MAG_STATUS;  // TODO: toggle from server
 	}
 	//	switch (id)
@@ -238,10 +244,14 @@ static uint8_t get_server_constant_mag_id(int id) {
 	//	}
 }
 
-static uint8_t get_server_constant_tracker_status(int status) {
-	if (status & (SYS_STATUS_SENSOR_ERROR | SYS_STATUS_SYSTEM_ERROR)) {
+static uint8_t get_server_constant_tracker_status(int status)
+{
+	if (status & (SYS_STATUS_SENSOR_ERROR | SYS_STATUS_SYSTEM_ERROR))
+	{
 		return SVR_STATUS_ERROR;
-	} else {
+	}
+	else
+	{
 		return SVR_STATUS_OK;
 	}
 }

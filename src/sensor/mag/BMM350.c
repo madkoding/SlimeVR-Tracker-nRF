@@ -7,15 +7,15 @@ Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
 
 1. Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
+	notice, this list of conditions and the following disclaimer.
 
 2. Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
+	notice, this list of conditions and the following disclaimer in the
+	documentation and/or other materials provided with the distribution.
 
 3. Neither the name of the copyright holder nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
+	contributors may be used to endorse or promote products derived from
+	this software without specific prior written permission.
 
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
 "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
@@ -37,9 +37,11 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #include "BMM350.h"
 
-// the datasheet says almost nothing about sensitivities, these are taken from boschsensortec BMM350_SensorAPI
-// Data registers for X,Y and Z magnetic channel and temperature channel provide data in 24bit registers in 21bit signed-integer format (21LSBs used)
-// currently the data read is uncompensated, there are compensation values in OTP which is not used at the moment
+// the datasheet says almost nothing about sensitivities, these are taken from
+// boschsensortec BMM350_SensorAPI Data registers for X,Y and Z magnetic channel and
+// temperature channel provide data in 24bit registers in 21bit signed-integer format
+// (21LSBs used) currently the data read is uncompensated, there are compensation values
+// in OTP which is not used at the moment
 #define bxy_sens 14.55f
 #define bz_sens 9.0f
 #define temp_sens 0.00204f
@@ -49,9 +51,12 @@ POSSIBILITY OF SUCH DAMAGE.
 #define lut_gain 0.714607238769531f
 #define power (float)(1000000.0 / 1048576.0)
 
-static const float sensitivity_xy = (power / (bxy_sens * ina_xy_gain_trgt * adc_gain * lut_gain)); // uT/LSB
-static const float sensitivity_z = (power / (bz_sens * ina_z_gain_trgt * adc_gain * lut_gain));
-static const float sensitivity_temp = 1 / (temp_sens * adc_gain * lut_gain * 1048576); // C/LSB
+static const float sensitivity_xy
+	= (power / (bxy_sens * ina_xy_gain_trgt * adc_gain * lut_gain));  // uT/LSB
+static const float sensitivity_z
+	= (power / (bz_sens * ina_z_gain_trgt * adc_gain * lut_gain));
+static const float sensitivity_temp
+	= 1 / (temp_sens * adc_gain * lut_gain * 1048576);  // C/LSB
 
 static uint8_t last_odr = 0xff;
 
@@ -59,20 +64,28 @@ LOG_MODULE_REGISTER(BMM350, LOG_LEVEL_DBG);
 
 int bmm3_init(float time, float *actual_time)
 {
-	int err = ssi_reg_write_byte(SENSOR_INTERFACE_DEV_MAG, BMM350_OTP_CMD_REG, 0x80); // PWR_OFF_OTP
+	int err = ssi_reg_write_byte(
+		SENSOR_INTERFACE_DEV_MAG,
+		BMM350_OTP_CMD_REG,
+		0x80
+	);  // PWR_OFF_OTP
 	if (err)
+	{
 		LOG_ERR("Communication error");
-	last_odr = 0xff; // reset last odr
+	}
+	last_odr = 0xff;  // reset last odr
 	err |= bmm3_update_odr(time, actual_time);
 	return (err < 0 ? err : 0);
 }
 
 void bmm3_shutdown(void)
 {
-	last_odr = 0xff; // reset last odr
+	last_odr = 0xff;  // reset last odr
 	int err = ssi_reg_write_byte(SENSOR_INTERFACE_DEV_MAG, BMM350_CMD, 0xB6);
 	if (err)
+	{
 		LOG_ERR("Communication error");
+	}
 }
 
 int bmm3_update_odr(float time, float *actual_time)
@@ -82,9 +95,9 @@ int bmm3_update_odr(float time, float *actual_time)
 	uint8_t AGGR_AVG;
 	uint8_t PMU_CMD;
 
-	if (time <= 0 || time == INFINITY) // suspend and forced mode both use suspend mode
+	if (time <= 0 || time == INFINITY)  // suspend and forced mode both use suspend mode
 	{
-		PMU_CMD = PMU_CMD_SUS; // amogus
+		PMU_CMD = PMU_CMD_SUS;  // amogus
 		ODR = 0;
 	}
 	else
@@ -97,9 +110,9 @@ int bmm3_update_odr(float time, float *actual_time)
 	{
 		AGGR = 0;
 		AGGR_AVG = AGGR_NO_AVG;
-		time = 0; // off
+		time = 0;  // off
 	}
-	else if (ODR > 200) // TODO: this sucks
+	else if (ODR > 200)  // TODO: this sucks
 	{
 		AGGR = AGGR_ODR_400Hz;
 		AGGR_AVG = AGGR_NO_AVG;
@@ -162,14 +175,24 @@ int bmm3_update_odr(float time, float *actual_time)
 
 	uint8_t AGGR_SET = AGGR_AVG << 4 | AGGR;
 	if (last_odr == AGGR_SET)
+	{
 		return 1;
+	}
 	else
+	{
 		last_odr = AGGR_SET;
+	}
 
-	int err = ssi_reg_write_byte(SENSOR_INTERFACE_DEV_MAG, BMM350_PMU_CMD_AGGR_SET, AGGR_SET);
+	int err = ssi_reg_write_byte(
+		SENSOR_INTERFACE_DEV_MAG,
+		BMM350_PMU_CMD_AGGR_SET,
+		AGGR_SET
+	);
 	err |= ssi_reg_write_byte(SENSOR_INTERFACE_DEV_MAG, BMM350_PMU_CMD, PMU_CMD);
 	if (err)
+	{
 		LOG_ERR("Communication error");
+	}
 
 	*actual_time = time;
 	return err;
@@ -177,62 +200,85 @@ int bmm3_update_odr(float time, float *actual_time)
 
 void bmm3_mag_oneshot(void)
 {
-	int err = ssi_reg_write_byte(SENSOR_INTERFACE_DEV_MAG, BMM350_PMU_CMD, PMU_CMD_FM_FAST);
+	int err
+		= ssi_reg_write_byte(SENSOR_INTERFACE_DEV_MAG, BMM350_PMU_CMD, PMU_CMD_FM_FAST);
 	if (err)
+	{
 		LOG_ERR("Communication error");
+	}
 }
 
 void bmm3_mag_read(float m[3])
 {
 	int err = 0;
 	uint8_t status;
-	while ((status & 0x01) == 0x01) // wait for forced mode to complete
-		err |= ssi_reg_read_byte(SENSOR_INTERFACE_DEV_MAG, BMM350_PMU_CMD_STATUS_0, &status);
+	while ((status & 0x01) == 0x01)  // wait for forced mode to complete
+	{
+		err |= ssi_reg_read_byte(
+			SENSOR_INTERFACE_DEV_MAG,
+			BMM350_PMU_CMD_STATUS_0,
+			&status
+		);
+	}
 	uint8_t rawData[9];
 	err |= ssi_burst_read(SENSOR_INTERFACE_DEV_MAG, BMM350_MAG_X_XLSB, &rawData[0], 9);
 	if (err)
+	{
 		LOG_ERR("Communication error");
+	}
 	bmm3_mag_process(rawData, m);
 }
 
 float bmm3_temp_read(float bias[3])
 {
 	uint8_t rawTemp[3];
-	int err = ssi_burst_read(SENSOR_INTERFACE_DEV_MAG, BMM350_TEMP_XLSB, &rawTemp[0], 3);
+	int err
+		= ssi_burst_read(SENSOR_INTERFACE_DEV_MAG, BMM350_TEMP_XLSB, &rawTemp[0], 3);
 	if (err)
+	{
 		LOG_ERR("Communication error");
-	float temp = (int32_t)((((int32_t)rawTemp[2]) << 24) | (((int32_t)rawTemp[1]) << 16) | (((int32_t)rawTemp[0]) << 8)) / 256;
+	}
+	float temp = (int32_t)((((int32_t)rawTemp[2]) << 24) | (((int32_t)rawTemp[1]) << 16)
+						   | (((int32_t)rawTemp[0]) << 8))
+			   / 256;
 	temp *= sensitivity_temp;
 	// taken from boschsensortec BMM350_SensorAPI, why is this needed?
 	if (temp > 0)
+	{
 		temp -= 25.49f;
+	}
 	else if (temp < 0)
+	{
 		temp += 25.49f;
+	}
 	return temp;
 }
 
 void bmm3_mag_process(uint8_t *raw_m, float m[3])
 {
-	for (int i = 0; i < 3; i++) // x, y, z
+	for (int i = 0; i < 3; i++)  // x, y, z
 	{
-		m[i] = (int32_t)((((int32_t)raw_m[(i * 3) + 2]) << 24) | (((int32_t)raw_m[(i * 3) + 1]) << 16) | (((int32_t)raw_m[i * 3]) << 8)) / 256;
+		m[i] = (int32_t)((((int32_t)raw_m[(i * 3) + 2]) << 24)
+						 | (((int32_t)raw_m[(i * 3) + 1]) << 16)
+						 | (((int32_t)raw_m[i * 3]) << 8))
+			 / 256;
 		m[i] *= i < 2 ? sensitivity_xy : sensitivity_z;
-		m[i] /= 100; // uT to gauss
+		m[i] /= 100;  // uT to gauss
 	}
 }
 
 // TODO: from BMM350_SensorAPI, add otp_dump_after_boot and update_mag_off_sens
 
-const sensor_mag_t sensor_mag_bmm350 = {
-	*bmm3_init,
-	*bmm3_shutdown,
+const sensor_mag_t sensor_mag_bmm350
+	= {*bmm3_init,
+	   *bmm3_shutdown,
 
-	*bmm3_update_odr,
+	   *bmm3_update_odr,
 
-	*bmm3_mag_oneshot,
-	*bmm3_mag_read,
-	*bmm3_temp_read,
+	   *bmm3_mag_oneshot,
+	   *bmm3_mag_read,
+	   *bmm3_temp_read,
 
-	*bmm3_mag_process,
-	9, 9
-};
+	   *bmm3_mag_process,
+	   9,
+	   9};

@@ -25,10 +25,21 @@
 
 #include "sensor.h"
 
-int imu_none_init(float clock_rate, float accel_time, float gyro_time, float *accel_actual_time, float *gyro_actual_time);
+int imu_none_init(
+	float clock_rate,
+	float accel_time,
+	float gyro_time,
+	float *accel_actual_time,
+	float *gyro_actual_time
+);
 void imu_none_shutdown(void);
 
-int imu_none_update_odr(float accel_time, float gyro_time, float *accel_actual_time, float *gyro_actual_time);
+int imu_none_update_odr(
+	float accel_time,
+	float gyro_time,
+	float *accel_actual_time,
+	float *gyro_actual_time
+);
 
 uint16_t imu_none_fifo_read(uint8_t *data, uint16_t len);
 int imu_none_fifo_process(uint16_t index, uint8_t *data, float a[3], float g[3]);

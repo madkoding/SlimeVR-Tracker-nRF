@@ -10,14 +10,14 @@
 
 #define LIS2MDL_TEMP_OUT_L_REG 0x6E
 
-#define ODR_10Hz  0x00
-#define ODR_20Hz  0x01
-#define ODR_50Hz  0x02
+#define ODR_10Hz 0x00
+#define ODR_20Hz 0x01
+#define ODR_50Hz 0x02
 #define ODR_100Hz 0x03
 
 #define MD_CONTINUOUS 0x00
-#define MD_SINGLE     0x01 // Performs oneshot, then switches to idle
-#define MD_IDLE       0x03
+#define MD_SINGLE 0x01  // Performs oneshot, then switches to idle
+#define MD_IDLE 0x03
 
 int lis2_init(float time, float *actual_time);
 void lis2_shutdown(void);

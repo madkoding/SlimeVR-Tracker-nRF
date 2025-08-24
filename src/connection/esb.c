@@ -60,14 +60,18 @@ LOG_MODULE_REGISTER(esb_event, LOG_LEVEL_INF);
 static void esb_thread(void);
 K_THREAD_DEFINE(esb_thread_id, 512, esb_thread, NULL, NULL, NULL, 6, 0, 0);
 
-void event_handler(struct esb_evt const *event) {
-	switch (event->evt_id) {
+void event_handler(struct esb_evt const *event)
+{
+	switch (event->evt_id)
+	{
 		case ESB_EVENT_TX_SUCCESS:
-			if (tx_errors >= 100) {
+			if (tx_errors >= 100)
+			{
 				set_status(SYS_STATUS_CONNECTION_ERROR, false);
 			}
 			tx_errors = 0;
-			if (esb_paired) {
+			if (esb_paired)
+			{
 				clocks_stop();
 			}
 			break;
@@ -78,7 +82,8 @@ void event_handler(struct esb_evt const *event) {
 				set_status(SYS_STATUS_CONNECTION_ERROR, true);
 			}
 			LOG_DBG("TX FAILED");
-			if (esb_paired) {
+			if (esb_paired)
+			{
 				clocks_stop();
 			}
 			break;
@@ -89,16 +94,18 @@ void event_handler(struct esb_evt const *event) {
 				{
 					LOG_DBG(
 						"tx: %16llX rx: %16llX",
-						*(uint64_t*)tx_payload_pair.data,
-						*(uint64_t*)rx_payload.data
+						*(uint64_t *)tx_payload_pair.data,
+						*(uint64_t *)rx_payload.data
 					);
-					if (rx_payload.length == 8
-						&& tx_payload_pair.data[1]
-							   == 1) {  // ack to second packet in pairing burst
+					if (rx_payload.length == 8 && tx_payload_pair.data[1] == 1)
+					{  // ack to second packet in pairing burst
 						memcpy(paired_addr, rx_payload.data, sizeof(paired_addr));
 					}
-				} else {
-					if (rx_payload.length == 4) {
+				}
+				else
+				{
+					if (rx_payload.length == 4)
+					{
 						// TODO: Device should never receive packets if it is already
 						// paired, why is this packet received? This may be part of
 						// acknowledge
@@ -107,7 +114,8 @@ void event_handler(struct esb_evt const *event) {
 							LOG_WRN("Timer not initialized");
 							break;
 						}
-						if (timer_state == false) {
+						if (timer_state == false)
+						{
 							//						nrfx_timer_resume(&m_timer);
 							timer_state = true;
 						}
@@ -129,9 +137,11 @@ bool clock_status = false;
 #if defined(CONFIG_CLOCK_CONTROL_NRF)
 static struct onoff_manager *clk_mgr;
 
-static int clocks_init(void) {
+static int clocks_init(void)
+{
 	clk_mgr = z_nrf_clock_control_get_onoff(CLOCK_CONTROL_NRF_SUBSYS_HF);
-	if (!clk_mgr) {
+	if (!clk_mgr)
+	{
 		LOG_ERR("Unable to get the Clock manager");
 		return -ENOTSUP;
 	}
@@ -141,8 +151,10 @@ static int clocks_init(void) {
 
 SYS_INIT(clocks_init, APPLICATION, CONFIG_APPLICATION_INIT_PRIORITY);
 
-int clocks_start(void) {
-	if (clock_status) {
+int clocks_start(void)
+{
+	if (clock_status)
+	{
 		return 0;
 	}
 	int err;
@@ -153,19 +165,23 @@ int clocks_start(void) {
 	sys_notify_init_spinwait(&clk_cli.notify);
 
 	err = onoff_request(clk_mgr, &clk_cli);
-	if (err < 0) {
+	if (err < 0)
+	{
 		LOG_ERR("Clock request failed: %d", err);
 		return err;
 	}
 
-	do {
+	do
+	{
 		k_usleep(100);
 		err = sys_notify_fetch_result(&clk_cli.notify, &res);
-		if (!err && res) {
+		if (!err && res)
+		{
 			LOG_ERR("Clock could not be started: %d", res);
 			return res;
 		}
-		if (err && ++fetch_attempts > 10) {
+		if (err && ++fetch_attempts > 10)
+		{
 			LOG_WRN_ONCE("Unable to fetch Clock request result: %d", err);
 			return err;
 		}
@@ -181,8 +197,10 @@ int clocks_start(void) {
 	return 0;
 }
 
-void clocks_stop(void) {
-	if (!clock_status) {
+void clocks_stop(void)
+{
+	if (!clock_status)
+	{
 		return;
 	}
 	clock_status = false;
@@ -199,7 +217,8 @@ BUILD_ASSERT(false, "No Clock Control driver");
 static struct k_thread clocks_thread_id;
 static K_THREAD_STACK_DEFINE(clocks_thread_id_stack, 128);
 
-void clocks_request_start(uint32_t delay_us) {
+void clocks_request_start(uint32_t delay_us)
+{
 	k_thread_create(
 		&clocks_thread_id,
 		clocks_thread_id_stack,
@@ -217,7 +236,8 @@ void clocks_request_start(uint32_t delay_us) {
 static struct k_thread clocks_stop_thread_id;
 static K_THREAD_STACK_DEFINE(clocks_stop_thread_id_stack, 128);
 
-void clocks_request_stop(uint32_t delay_us) {
+void clocks_request_stop(uint32_t delay_us)
+{
 	k_thread_create(
 		&clocks_stop_thread_id,
 		clocks_stop_thread_id_stack,
@@ -241,7 +261,8 @@ static const uint8_t discovery_addr_prefix[8]
 
 static uint8_t base_addr_0[4], base_addr_1[4], addr_prefix[8] = {0};
 
-int esb_initialize(bool tx) {
+int esb_initialize(bool tx)
+{
 	int err;
 
 	struct esb_config config = ESB_DEFAULT_CONFIG;
@@ -250,7 +271,8 @@ int esb_initialize(bool tx) {
 	uint16_t jitter = (rand() % 300) - 150;  // ±150 µs
 	uint16_t retransmit_delay_with_jitter = CONFIG_RADIO_RETRANSMIT_DELAY + jitter;
 
-	if (tx) {
+	if (tx)
+	{
 		// config.protocol = ESB_PROTOCOL_ESB_DPL;
 		// config.mode = ESB_MODE_PTX;
 		config.event_handler = event_handler;
@@ -264,7 +286,9 @@ int esb_initialize(bool tx) {
 		config.selective_auto_ack
 			= true;  // TODO: while pairing, should be set to false
 		//		config.use_fast_ramp_up = true;
-	} else {
+	}
+	else
+	{
 		// config.protocol = ESB_PROTOCOL_ESB_DPL;
 		config.mode = ESB_MODE_PRX;
 		config.event_handler = event_handler;
@@ -281,12 +305,13 @@ int esb_initialize(bool tx) {
 
 	err = esb_init(&config);
 
-	if (!err) {
+	if (!err)
+	{
 		LOG_INF(
 			"ESB initialized with RF channel %d (%.3f GHz), TX power %d dBm, "
 			"retransmit delay %d µs (base: %d, jitter: %+d), count %d",
 			CONFIG_RADIO_RF_CHANNEL,
-			2.400f + (CONFIG_RADIO_RF_CHANNEL * 0.001f),
+			(double)(2.400f + (CONFIG_RADIO_RF_CHANNEL * 0.001f)),
 			CONFIG_RADIO_TX_POWER,
 			retransmit_delay_with_jitter,
 			CONFIG_RADIO_RETRANSMIT_DELAY,
@@ -296,20 +321,24 @@ int esb_initialize(bool tx) {
 		esb_set_base_address_0(base_addr_0);
 	}
 
-	if (!err) {
+	if (!err)
+	{
 		esb_set_base_address_1(base_addr_1);
 	}
 
-	if (!err) {
+	if (!err)
+	{
 		esb_set_prefixes(addr_prefix, ARRAY_SIZE(addr_prefix));
 	}
 
 	// Set RF channel after initialization
-	if (!err) {
+	if (!err)
+	{
 		err = esb_set_rf_channel(CONFIG_RADIO_RF_CHANNEL);
 	}
 
-	if (err) {
+	if (err)
+	{
 		LOG_ERR("ESB initialization failed: %d", err);
 		set_status(SYS_STATUS_CONNECTION_ERROR, true);
 		return err;
@@ -319,8 +348,10 @@ int esb_initialize(bool tx) {
 	return 0;
 }
 
-void esb_deinitialize(void) {
-	if (esb_initialized) {
+void esb_deinitialize(void)
+{
+	if (esb_initialized)
+	{
 		esb_initialized = false;
 		k_msleep(10);  // wait for pending transmissions
 		esb_disable();
@@ -328,25 +359,30 @@ void esb_deinitialize(void) {
 	esb_initialized = false;
 }
 
-inline void esb_set_addr_discovery(void) {
+inline void esb_set_addr_discovery(void)
+{
 	memcpy(base_addr_0, discovery_base_addr_0, sizeof(base_addr_0));
 	memcpy(base_addr_1, discovery_base_addr_1, sizeof(base_addr_1));
 	memcpy(addr_prefix, discovery_addr_prefix, sizeof(addr_prefix));
 }
 
-inline void esb_set_addr_paired(void) {
+inline void esb_set_addr_paired(void)
+{
 	// Recreate receiver address
 	uint8_t addr_buffer[16] = {0};
-	for (int i = 0; i < 4; i++) {
+	for (int i = 0; i < 4; i++)
+	{
 		addr_buffer[i] = paired_addr[i + 2];
 		addr_buffer[i + 4] = paired_addr[i + 2] + paired_addr[6];
 	}
-	for (int i = 0; i < 8; i++) {
+	for (int i = 0; i < 8; i++)
+	{
 		addr_buffer[i + 8] = paired_addr[7] + i;
 	}
-	for (int i = 0; i < 16; i++) {
-		if (addr_buffer[i] == 0x00 || addr_buffer[i] == 0x55
-			|| addr_buffer[i] == 0xAA) {  // Avoid invalid addresses (see nrf datasheet)
+	for (int i = 0; i < 16; i++)
+	{
+		if (addr_buffer[i] == 0x00 || addr_buffer[i] == 0x55 || addr_buffer[i] == 0xAA)
+		{  // Avoid invalid addresses (see nrf datasheet)
 			addr_buffer[i] += 8;
 		}
 	}
@@ -355,18 +391,21 @@ inline void esb_set_addr_paired(void) {
 	memcpy(addr_prefix, addr_buffer + 8, sizeof(addr_prefix));
 }
 
-void esb_set_pair(uint64_t addr) {
-	uint64_t* device_addr
-		= (uint64_t*)NRF_FICR
+void esb_set_pair(uint64_t addr)
+{
+	uint64_t *device_addr
+		= (uint64_t *)NRF_FICR
 			  ->DEVICEADDR;  // Use device address as unique identifier (although it is
 							 // not actually guaranteed, see datasheet)
 	uint8_t buf[6] = {0};
 	memcpy(buf, device_addr, 6);
 	uint8_t checksum = crc8_ccitt(0x07, buf, 6);
-	if (checksum == 0) {
+	if (checksum == 0)
+	{
 		checksum = 8;
 	}
-	if ((addr & 0xFF) != checksum) {
+	if ((addr & 0xFF) != checksum)
+	{
 		LOG_INF("Incorrect checksum");
 		return;
 	}
@@ -381,8 +420,10 @@ void esb_set_pair(uint64_t addr) {
 	);  // Write new address and tracker id
 }
 
-void esb_pair(void) {
-	if (tx_errors >= 100) {
+void esb_pair(void)
+{
+	if (tx_errors >= 100)
+	{
 		set_status(SYS_STATUS_CONNECTION_ERROR, false);
 	}
 	tx_errors = 0;
@@ -393,29 +434,34 @@ void esb_pair(void) {
 		esb_initialize(true);
 		//		timer_init(); // TODO: shouldn't be here!!!
 		tx_payload_pair.noack = false;
-		uint64_t* addr
-			= (uint64_t*)NRF_FICR
+		uint64_t *addr
+			= (uint64_t *)NRF_FICR
 				  ->DEVICEADDR;  // Use device address as unique identifier (although it
 								 // is not actually guaranteed, see datasheet)
 		memcpy(&tx_payload_pair.data[2], addr, 6);
 		LOG_INF("Device address: %012llX", *addr & 0xFFFFFFFFFFFF);
 		uint8_t checksum = crc8_ccitt(0x07, &tx_payload_pair.data[2], 6);
-		if (checksum == 0) {
+		if (checksum == 0)
+		{
 			checksum = 8;
 		}
 		LOG_INF("Checksum: %02X", checksum);
 		tx_payload_pair.data[0]
 			= checksum;  // Use checksum to make sure packet is for this device
 		set_led(SYS_LED_PATTERN_SHORT, SYS_LED_PRIORITY_CONNECTION);
-		while (paired_addr[0] != checksum) {
-			if (!esb_initialized) {
+		while (paired_addr[0] != checksum)
+		{
+			if (!esb_initialized)
+			{
 				esb_set_addr_discovery();
 				esb_initialize(true);
 			}
-			if (!clock_status) {
+			if (!clock_status)
+			{
 				clocks_start();
 			}
-			if (paired_addr[0]) {
+			if (paired_addr[0])
+			{
 				LOG_INF("Incorrect checksum: %02X", paired_addr[0]);
 				paired_addr[0] = 0;  // Packet not for this device
 			}
@@ -448,7 +494,7 @@ void esb_pair(void) {
 	LOG_INF("Tracker ID: %u", paired_addr[1]);
 	LOG_INF(
 		"Receiver address: %012llX",
-		(*(uint64_t*)&retained->paired_addr[0] >> 16) & 0xFFFFFFFFFFFF
+		(*(uint64_t *)&retained->paired_addr[0] >> 16) & 0xFFFFFFFFFFFF
 	);
 
 	connection_set_id(paired_addr[1]);
@@ -458,8 +504,10 @@ void esb_pair(void) {
 	clocks_stop();
 }
 
-void esb_reset_pair(void) {
-	if (paired_addr[0] || esb_paired) {
+void esb_reset_pair(void)
+{
+	if (paired_addr[0] || esb_paired)
+	{
 		esb_deinitialize();  // make sure esb is off
 		esb_paired = false;
 		memset(paired_addr, 0, sizeof(paired_addr));
@@ -467,7 +515,8 @@ void esb_reset_pair(void) {
 	}
 }
 
-void esb_clear_pair(void) {
+void esb_clear_pair(void)
+{
 	esb_reset_pair();
 	sys_write(
 		PAIRED_ID,
@@ -478,11 +527,14 @@ void esb_clear_pair(void) {
 	LOG_INF("Pairing data reset");
 }
 
-void esb_write(uint8_t* data) {
-	if (!esb_initialized || !esb_paired) {
+void esb_write(uint8_t *data)
+{
+	if (!esb_initialized || !esb_paired)
+	{
 		return;
 	}
-	if (!clock_status) {
+	if (!clock_status)
+	{
 		clocks_start();
 	}
 #if defined(NRF54L15_XXAA)  // TODO: esb halts with ack and tx fail
@@ -498,16 +550,20 @@ void esb_write(uint8_t* data) {
 
 bool esb_ready(void) { return esb_initialized && esb_paired; }
 
-static void esb_thread(void) {
+static void esb_thread(void)
+{
 	// Read paired address from retained
 	memcpy(paired_addr, retained->paired_addr, sizeof(paired_addr));
 
-	while (1) {
-		if (!esb_paired) {
+	while (1)
+	{
+		if (!esb_paired)
+		{
 			esb_pair();
 			esb_initialize(true);
 		}
-		if (tx_errors >= 100) {
+		if (tx_errors >= 100)
+		{
 #if USER_SHUTDOWN_ENABLED
 			if (k_uptime_get() - last_tx_success
 				> CONFIG_CONNECTION_TIMEOUT_DELAY)  // shutdown if receiver is not

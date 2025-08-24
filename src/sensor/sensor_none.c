@@ -26,7 +26,13 @@
 
 LOG_MODULE_REGISTER(sensor_none, LOG_LEVEL_INF);
 
-int imu_none_init(float clock_rate, float accel_time, float gyro_time, float *accel_actual_time, float *gyro_actual_time)
+int imu_none_init(
+	float clock_rate,
+	float accel_time,
+	float gyro_time,
+	float *accel_actual_time,
+	float *gyro_actual_time
+)
 {
 	LOG_DBG("imu_none_init, sensor has no IMU or IMU cannot be initialized");
 	return -1;
@@ -38,13 +44,23 @@ void imu_none_shutdown(void)
 	return;
 }
 
-void imu_none_update_fs(float accel_range, float gyro_range, float *accel_actual_range, float *gyro_actual_range)
+void imu_none_update_fs(
+	float accel_range,
+	float gyro_range,
+	float *accel_actual_range,
+	float *gyro_actual_range
+)
 {
 	LOG_DBG("imu_none_update_fs, sensor has no IMU or IMU has no configurable FS");
 	return;
 }
 
-int imu_none_update_odr(float accel_time, float gyro_time, float *accel_actual_time, float *gyro_actual_time)
+int imu_none_update_odr(
+	float accel_time,
+	float gyro_time,
+	float *accel_actual_time,
+	float *gyro_actual_time
+)
 {
 	LOG_DBG("imu_none_update_odr, sensor has no IMU or IMU has no configurable ODR");
 	return -1;
@@ -64,7 +80,9 @@ int imu_none_fifo_process(uint16_t index, uint8_t *data, float a[3], float g[3])
 
 void imu_none_accel_read(float a[3])
 {
-	LOG_DBG("imu_none_accel_read, sensor has no IMU or IMU has no direct data register");
+	LOG_DBG(
+		"imu_none_accel_read, sensor has no IMU or IMU has no direct data register"
+	);
 	return;
 }
 
@@ -94,62 +112,81 @@ int imu_none_ext_setup(void)
 
 int imu_none_ext_passthrough(bool passthrough)
 {
-	LOG_DBG("imu_none_ext_passthrough, sensor has no IMU or IMU has no ext passthrough");
+	LOG_DBG(
+		"imu_none_ext_passthrough, sensor has no IMU or IMU has no ext passthrough"
+	);
 	return -1;
 }
 
-const sensor_imu_t sensor_imu_none = {
-	*imu_none_init,
-	*imu_none_shutdown,
+const sensor_imu_t sensor_imu_none
+	= {*imu_none_init,
+	   *imu_none_shutdown,
 
-	*imu_none_update_fs,
-	*imu_none_update_odr,
+	   *imu_none_update_fs,
+	   *imu_none_update_odr,
 
-	*imu_none_fifo_read,
-	*imu_none_fifo_process,
-	*imu_none_accel_read,
-	*imu_none_gyro_read,
-	*imu_none_temp_read,
+	   *imu_none_fifo_read,
+	   *imu_none_fifo_process,
+	   *imu_none_accel_read,
+	   *imu_none_gyro_read,
+	   *imu_none_temp_read,
 
-	*imu_none_setup_WOM,
-	
-	*imu_none_ext_setup,
-	*imu_none_ext_passthrough
-};
+	   *imu_none_setup_WOM,
+
+	   *imu_none_ext_setup,
+	   *imu_none_ext_passthrough};
 
 int mag_none_init(float time, float *actual_time)
 {
-	LOG_DBG("mag_none_init, sensor has no magnetometer or magnetometer cannot be initialized");
+	LOG_DBG(
+		"mag_none_init, sensor has no magnetometer or magnetometer cannot be "
+		"initialized"
+	);
 	return -1;
 }
 
 void mag_none_shutdown(void)
 {
-	LOG_DBG("mag_none_shutdown, sensor has no magnetometer or magnetometer cannot be shutdown");
+	LOG_DBG(
+		"mag_none_shutdown, sensor has no magnetometer or magnetometer cannot be "
+		"shutdown"
+	);
 	return;
 }
 
 int mag_none_update_odr(float time, float *actual_time)
 {
-	LOG_DBG("mag_none_update_odr, sensor has no magnetometer or magnetometer has no configurable ODR");
+	LOG_DBG(
+		"mag_none_update_odr, sensor has no magnetometer or magnetometer has no "
+		"configurable ODR"
+	);
 	return -1;
 }
 
 void mag_none_mag_oneshot(void)
 {
-	LOG_DBG("mag_none_mag_oneshot, sensor has no magnetometer or magnetometer has no oneshot mode");
+	LOG_DBG(
+		"mag_none_mag_oneshot, sensor has no magnetometer or magnetometer has no "
+		"oneshot mode"
+	);
 	return;
 }
 
 void mag_none_mag_read(float m[3])
 {
-	LOG_DBG("mag_none_mag_read, sensor has no magnetometer or magnetometer has no direct data register");
+	LOG_DBG(
+		"mag_none_mag_read, sensor has no magnetometer or magnetometer has no direct "
+		"data register"
+	);
 	return;
 }
 
 float mag_none_temp_read(float bias[3])
 {
-	LOG_DBG("mag_none_temp_read, sensor has no magnetometer or magnetometer has no temperature register");
+	LOG_DBG(
+		"mag_none_temp_read, sensor has no magnetometer or magnetometer has no "
+		"temperature register"
+	);
 	return 0;
 }
 
@@ -159,16 +196,16 @@ void mag_none_mag_process(uint8_t *raw_m, float m[3])
 	return;
 }
 
-const sensor_mag_t sensor_mag_none = {
-	*mag_none_init,
-	*mag_none_shutdown,
+const sensor_mag_t sensor_mag_none
+	= {*mag_none_init,
+	   *mag_none_shutdown,
 
-	*mag_none_update_odr,
+	   *mag_none_update_odr,
 
-	*mag_none_mag_oneshot,
-	*mag_none_mag_read,
-	*mag_none_temp_read,
+	   *mag_none_mag_oneshot,
+	   *mag_none_mag_read,
+	   *mag_none_temp_read,
 
-	*mag_none_mag_process,
-	UINT8_MAX, UINT8_MAX
-};
+	   *mag_none_mag_process,
+	   UINT8_MAX,
+	   UINT8_MAX};

@@ -25,6 +25,13 @@
 
 #include <zephyr/drivers/spi.h>
 
-int sensor_scan_spi(struct spi_dt_spec *bus, uint8_t *spi_dev_reg, int dev_addr_count, const uint8_t dev_reg[], const uint8_t dev_id[], const int dev_ids[]);
+int sensor_scan_spi(
+	struct spi_dt_spec *bus,
+	uint8_t *spi_dev_reg,
+	int dev_addr_count,
+	const uint8_t dev_reg[],
+	const uint8_t dev_id[],
+	const int dev_ids[]
+);
 
 #endif
