@@ -40,17 +40,12 @@ static vqf_coeffs_t coeffs;
 
 static float last_a[3] = {0};
 
-void vqf_update_sensor_ids(int imu)
-{
-	imu_id = imu;
-}
+void vqf_update_sensor_ids(int imu) { imu_id = imu; }
 
-static void set_params()
-{
+static void set_params() {
 	init_params(&params);
 	params.biasClip = 5.0f;
-	params.tauMag = 10.0f; // best result for VQF from paper
-	// best result from optimizer
+	params.tauMag = 2.0f;  // quicker magnetometer correction for stable field
 	params.biasForgettingTime = 136.579346;
 	params.biasSigmaInit = 3.219453;
 	params.biasSigmaMotion = 0.348501;
@@ -58,11 +53,11 @@ static void set_params()
 	params.biasVerticalForgettingFactor = 0.007056;
 	params.motionBiasEstEnabled = true;
 	params.restBiasEstEnabled = true;
-	params.restFilterTau = 1.114532;
+	params.restFilterTau = 0.5f;
 	params.restMinT = 2.586910;
 	params.restThAcc = 1.418598;
 	params.restThGyr = 1.399189;
-	params.tauAcc = 4.337983;
+	params.tauAcc = 2.0f;
 }
 
 void vqf_init(float g_time, float a_time, float m_time)
