@@ -4,6 +4,7 @@
 #include "led.h"
 #include "power.h"
 #include "status.h"
+#include <stddef.h>
 
 #define RBT_CNT_ID 1
 #define PAIRED_ID 2

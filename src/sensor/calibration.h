@@ -23,6 +23,8 @@
 #ifndef SLIMENRF_SENSOR_CALIBRATION
 #define SLIMENRF_SENSOR_CALIBRATION
 
+#include <stdbool.h>
+
 /* Sensor feeds data to calibration */
 void sensor_calibration_process_accel(float *a);
 void sensor_calibration_process_gyro(float *g);

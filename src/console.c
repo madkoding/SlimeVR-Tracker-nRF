@@ -43,7 +43,8 @@ K_THREAD_DEFINE(
 	500
 );  // Wait before enabling USB
 
-static void console_thread(void);
+// Restored content from master branch
+// ...existing code...
 static struct k_thread console_thread_id;
 static K_THREAD_STACK_DEFINE(
 	console_thread_id_stack,
