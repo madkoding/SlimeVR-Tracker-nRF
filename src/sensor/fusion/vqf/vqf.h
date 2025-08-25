@@ -48,6 +48,12 @@ void vqf_get_quat(float *q);
 bool vqf_get_rest_detected(void);
 void vqf_get_relative_rest_deviations(float *out);
 
+// Magnetometer control functions
+void vqf_set_magnetometer_enabled(bool enabled);
+bool vqf_is_magnetometer_enabled(void);
+
+void vqf_cleanup(void);  // Cleanup function to free allocated memory
+
 extern const sensor_fusion_t sensor_fusion_vqf;
 
 #endif

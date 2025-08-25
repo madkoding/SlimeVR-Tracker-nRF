@@ -120,10 +120,6 @@ int fusion_id = FUSION_MOTIONSENSE;
 static const sensor_fusion_t *sensor_fusion
 	= &sensor_fusion_vqf;  // TODO: change from server
 int fusion_id = FUSION_VQF;
-#elif CONFIG_SENSOR_USE_EKF
-static const sensor_fusion_t *sensor_fusion
-	= &sensor_fusion_ekf;  // TODO: change from server
-int fusion_id = FUSION_EKF;
 #endif
 
 static int sensor_imu_id = -1;
@@ -739,10 +735,6 @@ int sensor_init(void)
 	if (fusion_id == FUSION_VQF)
 	{
 		vqf_update_sensor_ids(sensor_imu_id);
-	}
-	if (fusion_id == FUSION_EKF)
-	{
-		ekf_update_sensor_ids(sensor_imu_id);
 	}
 	if (retained->fusion_id == fusion_id)  // Check if the retained fusion data is valid
 										   // and matches the selected fusion

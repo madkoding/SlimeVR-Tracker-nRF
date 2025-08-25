@@ -33,20 +33,24 @@
 #include "calibration.h"
 
 static uint8_t imu_id;
-static uint8_t sensor_data[128];  // any use sensor data
+static uint8_t *sensor_data = NULL;  // any use sensor data
 
-static float accelBias[3] = {0}, gyroBias[3] = {0}, magBias[3] = {0};  // offset biases
+static float *accelBias = NULL, *gyroBias = NULL, *magBias = NULL;  // offset biases
 
-static float accBAinv[4][3];
-static float magBAinv[4][3];
+static float (*accBAinv)[3] = NULL;
+static float (*magBAinv)[3] = NULL;
 
 static uint8_t magneto_progress;
 static uint8_t last_magneto_progress;
 static int64_t magneto_progress_time;
 
-static double ata[100];  // init calibration
+static double *ata = NULL;  // init calibration
 static double norm_sum;
 static double sample_count;
+
+static float *aBuf = NULL;
+static float *gBuf = NULL;
+static float *mBuf = NULL;
 
 // #define DEBUG true
 
@@ -56,14 +60,14 @@ LOG_MODULE_REGISTER(calibration, LOG_LEVEL_DBG);
 LOG_MODULE_REGISTER(calibration, LOG_LEVEL_INF);
 #endif
 
-static void sensor_sample_accel(const float a[3]);
-static int sensor_wait_accel(float a[3], k_timeout_t timeout);
+static void sensor_sample_accel(const float *a);
+static int sensor_wait_accel(float *a, k_timeout_t timeout);
 
-static void sensor_sample_gyro(const float g[3]);
-static int sensor_wait_gyro(float g[3], k_timeout_t timeout);
+static void sensor_sample_gyro(const float *g);
+static int sensor_wait_gyro(float *g, k_timeout_t timeout);
 
-static void sensor_sample_mag(const float m[3]);
-static int sensor_wait_mag(float m[3], k_timeout_t timeout);
+static void sensor_sample_mag(const float *m);
+static int sensor_wait_mag(float *m, k_timeout_t timeout);
 
 static void sensor_calibrate_imu(void);
 #if CONFIG_SENSOR_USE_6_SIDE_CALIBRATION
@@ -84,9 +88,12 @@ static int sensor_offsetBias(float *dest1, float *dest2);
 #if CONFIG_SENSOR_USE_6_SIDE_CALIBRATION
 static int sensor_6_sideBias(float a_inv[][3]);
 #endif
-static void sensor_sample_mag_magneto_sample(const float a[3], const float m[3]);
+static void sensor_sample_mag_magneto_sample(const float *a, const float *m);
 
 static int sensor_calibration_request(int id);
+
+// Initialize dynamic memory allocation
+static void sensor_calibration_init(void);
 
 static void calibration_thread(void);
 K_THREAD_DEFINE(
@@ -101,8 +108,107 @@ K_THREAD_DEFINE(
 	0
 );
 
-void sensor_calibration_process_accel(float a[3])
+// Initialize dynamic memory allocation
+static void sensor_calibration_init(void)
 {
+	if (sensor_data == NULL)
+	{
+		sensor_data = k_malloc(128 * sizeof(uint8_t));
+		if (sensor_data != NULL)
+		{
+			memset(sensor_data, 0, 128 * sizeof(uint8_t));
+		}
+	}
+
+	if (accelBias == NULL)
+	{
+		accelBias = k_malloc(3 * sizeof(float));
+		if (accelBias != NULL)
+		{
+			memset(accelBias, 0, 3 * sizeof(float));
+		}
+	}
+
+	if (gyroBias == NULL)
+	{
+		gyroBias = k_malloc(3 * sizeof(float));
+		if (gyroBias != NULL)
+		{
+			memset(gyroBias, 0, 3 * sizeof(float));
+		}
+	}
+
+	if (magBias == NULL)
+	{
+		magBias = k_malloc(3 * sizeof(float));
+		if (magBias != NULL)
+		{
+			memset(magBias, 0, 3 * sizeof(float));
+		}
+	}
+
+	if (accBAinv == NULL)
+	{
+		accBAinv = k_malloc(4 * 3 * sizeof(float));
+		if (accBAinv != NULL)
+		{
+			memset(accBAinv, 0, 4 * 3 * sizeof(float));
+		}
+	}
+
+	if (magBAinv == NULL)
+	{
+		magBAinv = k_malloc(4 * 3 * sizeof(float));
+		if (magBAinv != NULL)
+		{
+			memset(magBAinv, 0, 4 * 3 * sizeof(float));
+		}
+	}
+
+	if (ata == NULL)
+	{
+		ata = k_malloc(100 * sizeof(double));
+		if (ata != NULL)
+		{
+			memset(ata, 0, 100 * sizeof(double));
+		}
+	}
+
+	if (aBuf == NULL)
+	{
+		aBuf = k_malloc(3 * sizeof(float));
+		if (aBuf != NULL)
+		{
+			memset(aBuf, 0, 3 * sizeof(float));
+		}
+	}
+
+	if (gBuf == NULL)
+	{
+		gBuf = k_malloc(3 * sizeof(float));
+		if (gBuf != NULL)
+		{
+			memset(gBuf, 0, 3 * sizeof(float));
+		}
+	}
+
+	if (mBuf == NULL)
+	{
+		mBuf = k_malloc(3 * sizeof(float));
+		if (mBuf != NULL)
+		{
+			memset(mBuf, 0, 3 * sizeof(float));
+		}
+	}
+}
+
+void sensor_calibration_process_accel(float *a)
+{
+	if (a == NULL || accelBias == NULL || accBAinv == NULL)
+	{
+		return;
+	}
+
 	sensor_sample_accel(a);
 #if CONFIG_SENSOR_USE_6_SIDE_CALIBRATION
 	apply_BAinv(a, accBAinv);
@@ -114,8 +220,13 @@ void sensor_calibration_process_accel(float a[3])
 #endif
 }
 
-void sensor_calibration_process_gyro(float g[3])
+void sensor_calibration_process_gyro(float *g)
 {
+	if (g == NULL || gyroBias == NULL)
+	{
+		return;
+	}
+
 	sensor_sample_gyro(g);
 	for (int i = 0; i < 3; i++)
 	{
@@ -123,8 +234,13 @@ void sensor_calibration_process_gyro(float g[3])
 	}
 }
 
-void sensor_calibration_process_mag(float m[3])
+void sensor_calibration_process_mag(float *m)
 {
+	if (m == NULL || magBAinv == NULL)
+	{
+		return;
+	}
+
 	//	for (int i = 0; i < 3; i++)
 	//		m[i] -= magBias[i];
 	sensor_sample_mag(m);
@@ -137,12 +253,32 @@ uint8_t *sensor_calibration_get_sensor_data() { return sensor_data; }
 
 void sensor_calibration_read(void)
 {
-	memcpy(sensor_data, retained->sensor_data, sizeof(sensor_data));
-	memcpy(accelBias, retained->accelBias, sizeof(accelBias));
-	memcpy(gyroBias, retained->gyroBias, sizeof(gyroBias));
-	memcpy(magBias, retained->magBias, sizeof(magBias));
-	memcpy(magBAinv, retained->magBAinv, sizeof(magBAinv));
-	memcpy(accBAinv, retained->accBAinv, sizeof(accBAinv));
+	sensor_calibration_init();  // Ensure pointers are allocated
+
+	if (sensor_data != NULL && retained != NULL)
+	{
+		memcpy(sensor_data, retained->sensor_data, 128 * sizeof(uint8_t));
+	}
+	if (accelBias != NULL && retained != NULL)
+	{
+		memcpy(accelBias, retained->accelBias, 3 * sizeof(float));
+	}
+	if (gyroBias != NULL && retained != NULL)
+	{
+		memcpy(gyroBias, retained->gyroBias, 3 * sizeof(float));
+	}
+	if (magBias != NULL && retained != NULL)
+	{
+		memcpy(magBias, retained->magBias, 3 * sizeof(float));
+	}
+	if (magBAinv != NULL && retained != NULL)
+	{
+		memcpy(magBAinv, retained->magBAinv, 4 * 3 * sizeof(float));
+	}
+	if (accBAinv != NULL && retained != NULL)
+	{
+		memcpy(accBAinv, retained->accBAinv, 4 * 3 * sizeof(float));
+	}
 }
 
 int sensor_calibration_validate(float *a_bias, float *g_bias, bool write)
@@ -155,33 +291,80 @@ int sensor_calibration_validate(float *a_bias, float *g_bias, bool write)
 	{
 		g_bias = gyroBias;
 	}
-	float zero[3] = {0};
+
+	if (a_bias == NULL || g_bias == NULL)
+	{
+		return -1;
+	}
+
+	float *zero = k_malloc(3 * sizeof(float));
+	if (zero == NULL)
+	{
+		return -1;
+	}
+	memset(zero, 0, 3 * sizeof(float));
+
+	int result = 0;
 	if (!v_epsilon(a_bias, zero, 0.5)
 		|| !v_epsilon(g_bias, zero, 50.0))  // check accel is <0.5G and gyro <50dps
 	{
 		sensor_calibration_clear(a_bias, g_bias, write);
 		LOG_WRN("Invalidated calibration");
 		LOG_WRN("The IMU may be damaged or calibration was not completed properly");
-		return -1;
+		result = -1;
 	}
-	return 0;
+
+	k_free(zero);
+	return result;
 }
 
 #if CONFIG_SENSOR_USE_6_SIDE_CALIBRATION
-int sensor_calibration_validate_6_side(float a_inv[][3], bool write)
+int sensor_calibration_validate_6_side(float (*a_inv)[3], bool write)
 {
 	if (a_inv == NULL)
 	{
 		a_inv = accBAinv;
 	}
-	float zero[3] = {0};
-	float diagonal[3];
+
+	if (a_inv == NULL)
+	{
+		return -1;
+	}
+
+	float *zero = k_malloc(3 * sizeof(float));
+	float *diagonal = k_malloc(3 * sizeof(float));
+	float *average = k_malloc(3 * sizeof(float));
+
+	if (zero == NULL || diagonal == NULL || average == NULL)
+	{
+		if (zero)
+		{
+			k_free(zero);
+		}
+		if (diagonal)
+		{
+			k_free(diagonal);
+		}
+		if (average)
+		{
+			k_free(average);
+		}
+		return -1;
+	}
+
+	memset(zero, 0, 3 * sizeof(float));
+
 	for (int i = 0; i < 3; i++)
 	{
 		diagonal[i] = a_inv[i + 1][i];
 	}
 	float magnitude = v_avg(diagonal);
-	float average[3] = {magnitude, magnitude, magnitude};
+	for (int i = 0; i < 3; i++)
+	{
+		average[i] = magnitude;
+	}
+
+	int result = 0;
 	if (!v_epsilon(a_inv[0], zero, 0.5)
 		|| !v_epsilon(
 			diagonal,
@@ -192,26 +375,62 @@ int sensor_calibration_validate_6_side(float a_inv[][3], bool write)
 		sensor_calibration_clear_6_side(a_inv, write);
 		LOG_WRN("Invalidated calibration");
 		LOG_WRN("The IMU may be damaged or calibration was not completed properly");
-		return -1;
+		result = -1;
 	}
-	return 0;
+
+	k_free(zero);
+	k_free(diagonal);
+	k_free(average);
+	return result;
 }
 #endif
 
-int sensor_calibration_validate_mag(float m_inv[][3], bool write)
+int sensor_calibration_validate_mag(float (*m_inv)[3], bool write)
 {
 	if (m_inv == NULL)
 	{
 		m_inv = magBAinv;
 	}
-	float zero[3] = {0};
-	float diagonal[3];
+
+	if (m_inv == NULL)
+	{
+		return -1;
+	}
+
+	float *zero = k_malloc(3 * sizeof(float));
+	float *diagonal = k_malloc(3 * sizeof(float));
+	float *average = k_malloc(3 * sizeof(float));
+
+	if (zero == NULL || diagonal == NULL || average == NULL)
+	{
+		if (zero)
+		{
+			k_free(zero);
+		}
+		if (diagonal)
+		{
+			k_free(diagonal);
+		}
+		if (average)
+		{
+			k_free(average);
+		}
+		return -1;
+	}
+
+	memset(zero, 0, 3 * sizeof(float));
+
 	for (int i = 0; i < 3; i++)
 	{
 		diagonal[i] = m_inv[i + 1][i];
 	}
 	float magnitude = v_avg(diagonal);
-	float average[3] = {magnitude, magnitude, magnitude};
+	for (int i = 0; i < 3; i++)
+	{
+		average[i] = magnitude;
+	}
+
+	int result = 0;
 	if (!v_epsilon(m_inv[0], zero, 1)
 		|| !v_epsilon(
 			diagonal,
@@ -224,9 +443,13 @@ int sensor_calibration_validate_mag(float m_inv[][3], bool write)
 		LOG_WRN(
 			"The magnetometer may be damaged or calibration was not completed properly"
 		);
-		return -1;
+		result = -1;
 	}
-	return 0;
+
+	k_free(zero);
+	k_free(diagonal);
+	k_free(average);
+	return result;
 }
 
 void sensor_calibration_clear(float *a_bias, float *g_bias, bool write)
@@ -239,53 +462,92 @@ void sensor_calibration_clear(float *a_bias, float *g_bias, bool write)
 	{
 		g_bias = gyroBias;
 	}
-	memset(a_bias, 0, sizeof(accelBias));
-	memset(g_bias, 0, sizeof(gyroBias));
-	if (write)
+
+	if (a_bias != NULL)
+	{
+		memset(a_bias, 0, 3 * sizeof(float));
+	}
+	if (g_bias != NULL)
+	{
+		memset(g_bias, 0, 3 * sizeof(float));
+	}
+
+	if (write && retained != NULL)
 	{
 		LOG_INF("Clearing stored calibration data");
-		sys_write(MAIN_ACCEL_BIAS_ID, &retained->accelBias, a_bias, sizeof(accelBias));
-		sys_write(MAIN_GYRO_BIAS_ID, &retained->gyroBias, g_bias, sizeof(gyroBias));
+		if (a_bias != NULL)
+		{
+			sys_write(
+				MAIN_ACCEL_BIAS_ID,
+				&retained->accelBias,
+				a_bias,
+				3 * sizeof(float)
+			);
+		}
+		if (g_bias != NULL)
+		{
+			sys_write(
+				MAIN_GYRO_BIAS_ID,
+				&retained->gyroBias,
+				g_bias,
+				3 * sizeof(float)
+			);
+		}
 	}
 
 	sensor_fusion_invalidate();
 }
 
 #if CONFIG_SENSOR_USE_6_SIDE_CALIBRATION
-void sensor_calibration_clear_6_side(float a_inv[][3], bool write)
+void sensor_calibration_clear_6_side(float (*a_inv)[3], bool write)
 {
 	if (a_inv == NULL)
 	{
 		a_inv = accBAinv;
 	}
-	memset(a_inv, 0, sizeof(accBAinv));
-	for (int i = 0; i < 3; i++)  // set identity matrix
+
+	if (a_inv != NULL)
 	{
-		a_inv[i + 1][i] = 1;
+		memset(a_inv, 0, 4 * 3 * sizeof(float));
+		for (int i = 0; i < 3; i++)  // set identity matrix
+		{
+			a_inv[i + 1][i] = 1;
+		}
 	}
-	if (write)
+
+	if (write && retained != NULL && a_inv != NULL)
 	{
 		LOG_INF("Clearing stored calibration data");
-		sys_write(MAIN_ACC_6_BIAS_ID, &retained->accBAinv, a_inv, sizeof(accBAinv));
+		sys_write(
+			MAIN_ACC_6_BIAS_ID,
+			&retained->accBAinv,
+			a_inv,
+			4 * 3 * sizeof(float)
+		);
 	}
 }
 #endif
 
-void sensor_calibration_clear_mag(float m_inv[][3], bool write)
+void sensor_calibration_clear_mag(float (*m_inv)[3], bool write)
 {
 	if (m_inv == NULL)
 	{
 		m_inv = magBAinv;
 	}
-	memset(
-		m_inv,
-		0,
-		sizeof(magBAinv)
-	);  // zeroed matrix will disable magnetometer in fusion
-	if (write)
+
+	if (m_inv != NULL)
+	{
+		memset(
+			m_inv,
+			0,
+			4 * 3 * sizeof(float)
+		);  // zeroed matrix will disable magnetometer in fusion
+	}
+
+	if (write && retained != NULL && m_inv != NULL)
 	{
 		LOG_INF("Clearing stored calibration data");
-		sys_write(MAIN_MAG_BIAS_ID, &retained->magBAinv, m_inv, sizeof(magBAinv));
+		sys_write(MAIN_MAG_BIAS_ID, &retained->magBAinv, m_inv, 4 * 3 * sizeof(float));
 	}
 }
 
@@ -304,13 +566,17 @@ void sensor_request_calibration_mag(void)
 	}
 }
 
-static float aBuf[3] = {0};
 uint64_t accel_sample = 0;
 uint64_t accel_wait_sample = 0;
 
-static void sensor_sample_accel(const float a[3])
+static void sensor_sample_accel(const float *a)
 {
-	memcpy(aBuf, a, sizeof(aBuf));
+	if (a == NULL || aBuf == NULL)
+	{
+		return;
+	}
+
+	memcpy(aBuf, a, 3 * sizeof(float));
 	accel_sample++;
 	if (accel_wait_sample)
 	{
@@ -318,8 +584,13 @@ static void sensor_sample_accel(const float a[3])
 	}
 }
 
-static int sensor_wait_accel(float a[3], k_timeout_t timeout)
+static int sensor_wait_accel(float *a, k_timeout_t timeout)
 {
+	if (a == NULL || aBuf == NULL)
+	{
+		return -1;
+	}
+
 	int64_t sample_end_time = MAX(k_uptime_ticks() + timeout.ticks, timeout.ticks);
 	accel_wait_sample = accel_sample;
 	while (accel_sample <= accel_wait_sample && k_uptime_ticks() < sample_end_time)
@@ -332,17 +603,21 @@ static int sensor_wait_accel(float a[3], k_timeout_t timeout)
 		LOG_ERR("Accelerometer wait timed out");
 		return -1;
 	}
-	memcpy(a, aBuf, sizeof(aBuf));
+	memcpy(a, aBuf, 3 * sizeof(float));
 	return 0;
 }
 
-static float gBuf[3] = {0};
 uint64_t gyro_sample = 0;
 uint64_t gyro_wait_sample = 0;
 
-static void sensor_sample_gyro(const float g[3])
+static void sensor_sample_gyro(const float *g)
 {
-	memcpy(gBuf, g, sizeof(gBuf));
+	if (g == NULL || gBuf == NULL)
+	{
+		return;
+	}
+
+	memcpy(gBuf, g, 3 * sizeof(float));
 	gyro_sample++;
 	if (gyro_wait_sample)
 	{
@@ -350,8 +625,13 @@ static void sensor_sample_gyro(const float g[3])
 	}
 }
 
-static int sensor_wait_gyro(float g[3], k_timeout_t timeout)
+static int sensor_wait_gyro(float *g, k_timeout_t timeout)
 {
+	if (g == NULL || gBuf == NULL)
+	{
+		return -1;
+	}
+
 	int64_t sample_end_time = MAX(k_uptime_ticks() + timeout.ticks, timeout.ticks);
 	gyro_wait_sample = gyro_sample;
 	while (gyro_sample <= gyro_wait_sample && k_uptime_ticks() < sample_end_time)
@@ -364,17 +644,21 @@ static int sensor_wait_gyro(float g[3], k_timeout_t timeout)
 		LOG_ERR("Gyroscope wait timed out");
 		return -1;
 	}
-	memcpy(g, gBuf, sizeof(gBuf));
+	memcpy(g, gBuf, 3 * sizeof(float));
 	return 0;
 }
 
-static float mBuf[3] = {0};
 uint64_t mag_sample = 0;
 uint64_t mag_wait_sample = 0;
 
-static void sensor_sample_mag(const float m[3])
+static void sensor_sample_mag(const float *m)
 {
-	memcpy(mBuf, m, sizeof(mBuf));
+	if (m == NULL || mBuf == NULL)
+	{
+		return;
+	}
+
+	memcpy(mBuf, m, 3 * sizeof(float));
 	mag_sample++;
 	if (mag_wait_sample)
 	{
@@ -382,8 +666,13 @@ static void sensor_sample_mag(const float m[3])
 	}
 }
 
-static int sensor_wait_mag(float m[3], k_timeout_t timeout)
+static int sensor_wait_mag(float *m, k_timeout_t timeout)
 {
+	if (m == NULL || mBuf == NULL)
+	{
+		return -1;
+	}
+
 	int64_t sample_end_time = MAX(k_uptime_ticks() + timeout.ticks, timeout.ticks);
 	mag_wait_sample = mag_sample;
 	while (mag_sample <= mag_wait_sample && k_uptime_ticks() < sample_end_time)
@@ -396,13 +685,28 @@ static int sensor_wait_mag(float m[3], k_timeout_t timeout)
 		LOG_ERR("Magnetometer wait timed out");
 		return -1;
 	}
-	memcpy(m, mBuf, sizeof(mBuf));
+	memcpy(m, mBuf, 3 * sizeof(float));
 	return 0;
 }
 
 static void sensor_calibrate_imu()
 {
-	float a_bias[3], g_bias[3];
+	float *a_bias = k_malloc(3 * sizeof(float));
+	float *g_bias = k_malloc(3 * sizeof(float));
+
+	if (a_bias == NULL || g_bias == NULL)
+	{
+		if (a_bias)
+		{
+			k_free(a_bias);
+		}
+		if (g_bias)
+		{
+			k_free(g_bias);
+		}
+		return;
+	}
+
 	LOG_INF("Calibrating main accelerometer and gyroscope zero rate offset");
 	LOG_INF("Rest the device on a stable surface");
 
@@ -410,6 +714,8 @@ static void sensor_calibrate_imu()
 	if (!wait_for_motion(false, 6))  // Wait for accelerometer to settle, timeout 3s
 	{
 		set_led(SYS_LED_PATTERN_OFF, SYS_LED_PRIORITY_SENSOR);
+		k_free(a_bias);
+		k_free(g_bias);
 		return;  // Timeout, calibration failed
 	}
 
@@ -430,15 +736,20 @@ static void sensor_calibrate_imu()
 		{
 			LOG_WRN("IMU specific calibration was not completed properly");
 			set_led(SYS_LED_PATTERN_OFF, SYS_LED_PRIORITY_SENSOR);
+			k_free(a_bias);
+			k_free(g_bias);
 			return;  // Calibration failed
 		}
 		LOG_INF("Finished IMU specific calibration");
-		sys_write(
-			MAIN_SENSOR_DATA_ID,
-			&retained->sensor_data,
-			sensor_data,
-			sizeof(sensor_data)
-		);
+		if (sensor_data != NULL && retained != NULL)
+		{
+			sys_write(
+				MAIN_SENSOR_DATA_ID,
+				&retained->sensor_data,
+				sensor_data,
+				128 * sizeof(uint8_t)
+			);
+		}
 		sensor_fusion_invalidate();  // only invalidate fusion if calibration was
 									 // successful
 		k_msleep(500);  // Delay before beginning acquisition
@@ -477,45 +788,78 @@ static void sensor_calibrate_imu()
 		set_led(SYS_LED_PATTERN_OFF, SYS_LED_PRIORITY_SENSOR);
 		LOG_INF("Restoring previous calibration");
 #if !CONFIG_SENSOR_USE_6_SIDE_CALIBRATION
-		LOG_INF(
-			"Accelerometer bias: %.5f %.5f %.5f",
-			(double)accelBias[0],
-			(double)accelBias[1],
-			(double)accelBias[2]
-		);
+		if (accelBias != NULL)
+		{
+			LOG_INF(
+				"Accelerometer bias: %.5f %.5f %.5f",
+				(double)accelBias[0],
+				(double)accelBias[1],
+				(double)accelBias[2]
+			);
+		}
 #endif
-		LOG_INF(
-			"Gyroscope bias: %.5f %.5f %.5f",
-			(double)gyroBias[0],
-			(double)gyroBias[1],
-			(double)gyroBias[2]
-		);
+		if (gyroBias != NULL)
+		{
+			LOG_INF(
+				"Gyroscope bias: %.5f %.5f %.5f",
+				(double)gyroBias[0],
+				(double)gyroBias[1],
+				(double)gyroBias[2]
+			);
+		}
 		sensor_calibration_validate(
 			NULL,
 			NULL,
 			true
 		);  // additionally verify old calibration
+		k_free(a_bias);
+		k_free(g_bias);
 		return;
 	}
 	else
 	{
 		LOG_INF("Applying calibration");
-		memcpy(accelBias, a_bias, sizeof(accelBias));
-		memcpy(gyroBias, g_bias, sizeof(gyroBias));
+		if (accelBias != NULL)
+		{
+			memcpy(accelBias, a_bias, 3 * sizeof(float));
+		}
+		if (gyroBias != NULL)
+		{
+			memcpy(gyroBias, g_bias, 3 * sizeof(float));
+		}
 		sensor_fusion_invalidate();  // only invalidate fusion if calibration was
 									 // successful
 	}
-	sys_write(MAIN_ACCEL_BIAS_ID, &retained->accelBias, accelBias, sizeof(accelBias));
-	sys_write(MAIN_GYRO_BIAS_ID, &retained->gyroBias, gyroBias, sizeof(gyroBias));
+	if (accelBias != NULL && retained != NULL)
+	{
+		sys_write(
+			MAIN_ACCEL_BIAS_ID,
+			&retained->accelBias,
+			accelBias,
+			3 * sizeof(float)
+		);
+	}
+	if (gyroBias != NULL && retained != NULL)
+	{
+		sys_write(MAIN_GYRO_BIAS_ID, &retained->gyroBias, gyroBias, 3 * sizeof(float));
+	}
 
 	LOG_INF("Finished calibration");
 	set_led(SYS_LED_PATTERN_ONESHOT_COMPLETE, SYS_LED_PRIORITY_SENSOR);
+
+	k_free(a_bias);
+	k_free(g_bias);
 }
 
 #if CONFIG_SENSOR_USE_6_SIDE_CALIBRATION
 static void sensor_calibrate_6_side(void)
 {
-	float a_inv[4][3];
+	float (*a_inv)[3] = k_malloc(4 * 3 * sizeof(float));
+	if (a_inv == NULL)
+	{
+		return;
+	}
+
 	LOG_INF("Calibrating main accelerometer 6-side offset");
 	LOG_INF("Rest the device on a stable surface");
 
@@ -548,75 +892,127 @@ static void sensor_calibrate_6_side(void)
 	{
 		set_led(SYS_LED_PATTERN_OFF, SYS_LED_PRIORITY_SENSOR);
 		LOG_INF("Restoring previous calibration");
-		LOG_INF("Accelerometer matrix:");
-		for (int i = 0; i < 3; i++)
+		if (accBAinv != NULL)
 		{
-			LOG_INF(
-				"%.5f %.5f %.5f %.5f",
-				(double)accBAinv[0][i],
-				(double)accBAinv[1][i],
-				(double)accBAinv[2][i],
-				(double)accBAinv[3][i]
-			);
+			LOG_INF("Accelerometer matrix:");
+			for (int i = 0; i < 3; i++)
+			{
+				LOG_INF(
+					"%.5f %.5f %.5f %.5f",
+					(double)accBAinv[0][i],
+					(double)accBAinv[1][i],
+					(double)accBAinv[2][i],
+					(double)accBAinv[3][i]
+				);
+			}
 		}
 		sensor_calibration_validate_6_side(
 			NULL,
 			true
 		);  // additionally verify old calibration
+		k_free(a_inv);
 		return;
 	}
 	else
 	{
 		LOG_INF("Applying calibration");
-		memcpy(accBAinv, a_inv, sizeof(accBAinv));
+		if (accBAinv != NULL)
+		{
+			memcpy(accBAinv, a_inv, 4 * 3 * sizeof(float));
+		}
 		sensor_fusion_invalidate();  // only invalidate fusion if calibration was
 									 // successful
 	}
-	sys_write(MAIN_ACC_6_BIAS_ID, &retained->accBAinv, accBAinv, sizeof(accBAinv));
+	if (accBAinv != NULL && retained != NULL)
+	{
+		sys_write(
+			MAIN_ACC_6_BIAS_ID,
+			&retained->accBAinv,
+			accBAinv,
+			4 * 3 * sizeof(float)
+		);
+	}
 
 	LOG_INF("Finished calibration");
 	set_led(SYS_LED_PATTERN_ONESHOT_COMPLETE, SYS_LED_PRIORITY_SENSOR);
+
+	k_free(a_inv);
 }
 #endif
 
 static int sensor_calibrate_mag(void)
 {
-	float zero[3] = {0};
-	if (v_diff_mag(magBAinv[0], zero) != 0)
+	if (magBAinv == NULL)
 	{
-		return -1;  // magnetometer calibration already exists
+		return -1;
 	}
 
-	float m[3];
+	float *zero = k_malloc(3 * sizeof(float));
+	if (zero == NULL)
+	{
+		return -1;
+	}
+	memset(zero, 0, 3 * sizeof(float));
+
+	if (v_diff_mag(magBAinv[0], zero) != 0)
+	{
+		k_free(zero);
+		return -1;  // magnetometer calibration already exists
+	}
+	k_free(zero);
+
+	float *m = k_malloc(3 * sizeof(float));
+	if (m == NULL)
+	{
+		return -1;
+	}
+
 	if (sensor_wait_mag(m, K_MSEC(1000)))
 	{
+		k_free(m);
 		return -1;  // Timeout
 	}
-	sensor_sample_mag_magneto_sample(aBuf, m);  // 400us
+	if (aBuf != NULL)
+	{
+		sensor_sample_mag_magneto_sample(aBuf, m);  // 400us
+	}
+	k_free(m);
+
 	if (magneto_progress != 0b11111111)
 	{
 		return 0;
 	}
 
-	float m_inv[4][3];
+	float (*m_inv)[3] = k_malloc(4 * 3 * sizeof(float));
+	if (m_inv == NULL)
+	{
+		return -1;
+	}
+
 	LOG_INF("Calibrating magnetometer hard/soft iron offset");
 
 	// max allocated 1072 bytes
 #if DEBUG
-	printk("ata:\n");
-	for (int i = 0; i < 10; i++)
+	if (ata != NULL)
 	{
-		for (int j = 0; j < 10; j++)
+		printk("ata:\n");
+		for (int i = 0; i < 10; i++)
 		{
-			printk("%7.2f, ", (double)ata[i * 10 + j]);
+			for (int j = 0; j < 10; j++)
+			{
+				printk("%7.2f, ", (double)ata[i * 10 + j]);
+			}
+			printk("\n");
+			k_msleep(3);
 		}
-		printk("\n");
-		k_msleep(3);
+		printk("norm_sum: %.2f, sample_count: %.0f\n", norm_sum, sample_count);
 	}
-	printk("norm_sum: %.2f, sample_count: %.0f\n", norm_sum, sample_count);
 #endif
 	wait_for_threads();
-	magneto_current_calibration(m_inv, ata, norm_sum, sample_count);  // 25ms
+	if (ata != NULL)
+	{
+		magneto_current_calibration(m_inv, ata, norm_sum, sample_count);  // 25ms
+	}
 	magneto_reset();
 
 	LOG_INF("Magnetometer matrix:");
@@ -634,33 +1030,50 @@ static int sensor_calibrate_mag(void)
 	{
 		set_led(SYS_LED_PATTERN_OFF, SYS_LED_PRIORITY_SENSOR);
 		LOG_INF("Restoring previous calibration");
-		LOG_INF("Magnetometer matrix:");
-		for (int i = 0; i < 3; i++)
+		if (magBAinv != NULL)
 		{
-			LOG_INF(
-				"%.5f %.5f %.5f %.5f",
-				(double)magBAinv[0][i],
-				(double)magBAinv[1][i],
-				(double)magBAinv[2][i],
-				(double)magBAinv[3][i]
-			);
+			LOG_INF("Magnetometer matrix:");
+			for (int i = 0; i < 3; i++)
+			{
+				LOG_INF(
+					"%.5f %.5f %.5f %.5f",
+					(double)magBAinv[0][i],
+					(double)magBAinv[1][i],
+					(double)magBAinv[2][i],
+					(double)magBAinv[3][i]
+				);
+			}
 		}
 		sensor_calibration_validate_mag(
 			NULL,
 			true
 		);  // additionally verify old calibration
+		k_free(m_inv);
 		return -1;
 	}
 	else
 	{
 		LOG_INF("Applying calibration");
-		memcpy(magBAinv, m_inv, sizeof(magBAinv));
+		if (magBAinv != NULL)
+		{
+			memcpy(magBAinv, m_inv, 4 * 3 * sizeof(float));
+		}
 		// fusion invalidation not necessary
 	}
-	sys_write(MAIN_MAG_BIAS_ID, &retained->magBAinv, magBAinv, sizeof(magBAinv));
+	if (magBAinv != NULL && retained != NULL)
+	{
+		sys_write(
+			MAIN_MAG_BIAS_ID,
+			&retained->magBAinv,
+			magBAinv,
+			4 * 3 * sizeof(float)
+		);
+	}
 
 	LOG_INF("Finished calibration");
 	set_led(SYS_LED_PATTERN_ONESHOT_COMPLETE, SYS_LED_PRIORITY_SENSOR);
+
+	k_free(m_inv);
 	return 0;
 }
 
@@ -668,9 +1081,26 @@ static int sensor_calibrate_mag(void)
 static bool wait_for_motion(bool motion, int samples)
 {
 	uint8_t counts = 0;
-	float a[3], last_a[3];
+	float *a = k_malloc(3 * sizeof(float));
+	float *last_a = k_malloc(3 * sizeof(float));
+
+	if (a == NULL || last_a == NULL)
+	{
+		if (a)
+		{
+			k_free(a);
+		}
+		if (last_a)
+		{
+			k_free(last_a);
+		}
+		return false;
+	}
+
 	if (sensor_wait_accel(last_a, K_MSEC(1000)))
 	{
+		k_free(a);
+		k_free(last_a);
 		return false;
 	}
 	LOG_INF(
@@ -684,6 +1114,8 @@ static bool wait_for_motion(bool motion, int samples)
 		k_msleep(500);
 		if (sensor_wait_accel(a, K_MSEC(1000)))
 		{
+			k_free(a);
+			k_free(last_a);
 			return false;
 		}
 		LOG_INF(
@@ -698,6 +1130,8 @@ static bool wait_for_motion(bool motion, int samples)
 			counts++;
 			if (counts == 2)
 			{
+				k_free(a);
+				k_free(last_a);
 				return true;
 			}
 		}
@@ -705,9 +1139,11 @@ static bool wait_for_motion(bool motion, int samples)
 		{
 			counts = 0;
 		}
-		memcpy(last_a, a, sizeof(a));
+		memcpy(last_a, a, 3 * sizeof(float));
 	}
 	LOG_INF("Motion detected");
+	k_free(a);
+	k_free(last_a);
 	return false;
 }
 
@@ -728,7 +1164,10 @@ static void magneto_reset(void)
 	magneto_progress = 0;  // reusing ata, so guarantee cleared mag progress
 	last_magneto_progress = 0;
 	magneto_progress_time = 0;
-	memset(ata, 0, sizeof(ata));
+	if (ata != NULL)
+	{
+		memset(ata, 0, 100 * sizeof(double));
+	}
 	norm_sum = 0;
 	sample_count = 0;
 }
@@ -736,6 +1175,11 @@ static void magneto_reset(void)
 #if CONFIG_SENSOR_USE_6_SIDE_CALIBRATION
 static int isAccRest(float *acc, float *pre_acc, float threshold, int *t, int restdelta)
 {
+	if (acc == NULL || pre_acc == NULL || t == NULL)
+	{
+		return 0;
+	}
+
 	float delta_x = acc[0] - pre_acc[0];
 	float delta_y = acc[1] - pre_acc[1];
 	float delta_z = acc[2] - pre_acc[2];
@@ -763,9 +1207,31 @@ static int isAccRest(float *acc, float *pre_acc, float threshold, int *t, int re
 // calibration (particulary for gyro ZRO)
 int sensor_offsetBias(float *dest1, float *dest2)
 {
-	float rawData[3], last_a[3];
+	if (dest1 == NULL || dest2 == NULL)
+	{
+		return -2;
+	}
+
+	float *rawData = k_malloc(3 * sizeof(float));
+	float *last_a = k_malloc(3 * sizeof(float));
+
+	if (rawData == NULL || last_a == NULL)
+	{
+		if (rawData)
+		{
+			k_free(rawData);
+		}
+		if (last_a)
+		{
+			k_free(last_a);
+		}
+		return -2;
+	}
+
 	if (sensor_wait_accel(last_a, K_MSEC(1000)))
 	{
+		k_free(rawData);
+		k_free(last_a);
 		return -2;  // Timeout
 	}
 	int64_t sampling_start_time = k_uptime_get();
@@ -774,10 +1240,14 @@ int sensor_offsetBias(float *dest1, float *dest2)
 	{
 		if (sensor_wait_accel(rawData, K_MSEC(1000)))
 		{
+			k_free(rawData);
+			k_free(last_a);
 			return -2;  // Timeout
 		}
 		if (!v_epsilon(rawData, last_a, 0.1))
 		{
+			k_free(rawData);
+			k_free(last_a);
 			return -1;  // Motion detected
 		}
 #if !CONFIG_SENSOR_USE_6_SIDE_CALIBRATION
@@ -787,6 +1257,8 @@ int sensor_offsetBias(float *dest1, float *dest2)
 #endif
 		if (sensor_wait_gyro(rawData, K_MSEC(1000)))
 		{
+			k_free(rawData);
+			k_free(last_a);
 			return -2;  // Timeout
 		}
 		dest2[0] += rawData[0];
@@ -831,22 +1303,47 @@ int sensor_offsetBias(float *dest1, float *dest2)
 	}
 	else
 	{
+		k_free(rawData);
+		k_free(last_a);
 		return -1;
 	}
 #endif
 	dest2[0] /= i;
 	dest2[1] /= i;
 	dest2[2] /= i;
+
+	k_free(rawData);
+	k_free(last_a);
 	return 0;
 }
 
 // TODO: can be used to get a better gyro bias
 #if CONFIG_SENSOR_USE_6_SIDE_CALIBRATION
-int sensor_6_sideBias(float a_inv[][3])
+int sensor_6_sideBias(float (*a_inv)[3])
 {
+	if (a_inv == NULL)
+	{
+		return -2;
+	}
+
 	// Acc 6 side calibrate
-	float rawData[3];
-	float pre_acc[3] = {0};
+	float *rawData = k_malloc(3 * sizeof(float));
+	float *pre_acc = k_malloc(3 * sizeof(float));
+
+	if (rawData == NULL || pre_acc == NULL)
+	{
+		if (rawData)
+		{
+			k_free(rawData);
+		}
+		if (pre_acc)
+		{
+			k_free(pre_acc);
+		}
+		return -2;
+	}
+
+	memset(pre_acc, 0, 3 * sizeof(float));
 
 	const float THRESHOLD_ACC = 0.05;
 	int resttime = 0;
@@ -862,12 +1359,12 @@ int sensor_6_sideBias(float a_inv[][3])
 		{
 			if (sensor_wait_accel(rawData, K_MSEC(1000)))
 			{
+				k_free(rawData);
+				k_free(pre_acc);
 				return -2;  // Timeout, magneto state not handled here
 			}
 			int rest = isAccRest(rawData, pre_acc, THRESHOLD_ACC, &resttime, 100);
-			pre_acc[0] = rawData[0];
-			pre_acc[1] = rawData[1];
-			pre_acc[2] = rawData[2];
+			memcpy(pre_acc, rawData, 3 * sizeof(float));
 
 			// force not resting until a new side is detected and stable
 			uint8_t new_magneto_progress = magneto_progress;
@@ -903,20 +1400,27 @@ int sensor_6_sideBias(float a_inv[][3])
 				{
 					if (sensor_wait_accel(rawData, K_MSEC(1000)))
 					{
+						k_free(rawData);
+						k_free(pre_acc);
 						return -2;  // Timeout, magneto state not handled here
 					}
 					if (!v_epsilon(rawData, pre_acc, 0.1))
 					{
+						k_free(rawData);
+						k_free(pre_acc);
 						return -1;  // Motion detected
 					}
-					magneto_sample(
-						rawData[0],
-						rawData[1],
-						rawData[2],
-						ata,
-						&norm_sum,
-						&sample_count
-					);
+					if (ata != NULL)
+					{
+						magneto_sample(
+							rawData[0],
+							rawData[1],
+							rawData[2],
+							ata,
+							&norm_sum,
+							&sample_count
+						);
+					}
 					if (k_uptime_get() >= sampling_start_time + i * 100)
 					{
 						printk("#");
@@ -941,12 +1445,12 @@ int sensor_6_sideBias(float a_inv[][3])
 			k_msleep(100);
 			if (sensor_wait_accel(rawData, K_MSEC(1000)))
 			{
+				k_free(rawData);
+				k_free(pre_acc);
 				return -2;  // Timeout, magneto state not handled here
 			}
 			int rest = isAccRest(rawData, pre_acc, THRESHOLD_ACC, &resttime, 100);
-			pre_acc[0] = rawData[0];
-			pre_acc[1] = rawData[1];
-			pre_acc[2] = rawData[2];
+			memcpy(pre_acc, rawData, 3 * sizeof(float));
 
 			if (rest == 0)
 			{
@@ -958,31 +1462,45 @@ int sensor_6_sideBias(float a_inv[][3])
 
 	printk("Calculating the data....\n");
 #if DEBUG
-	printk("ata:\n");
-	for (int i = 0; i < 10; i++)
+	if (ata != NULL)
 	{
-		for (int j = 0; j < 10; j++)
+		printk("ata:\n");
+		for (int i = 0; i < 10; i++)
 		{
-			printk("%7.2f, ", (double)ata[i * 10 + j]);
+			for (int j = 0; j < 10; j++)
+			{
+				printk("%7.2f, ", (double)ata[i * 10 + j]);
+			}
+			printk("\n");
+			k_msleep(3);
 		}
-		printk("\n");
-		k_msleep(3);
+		printk("norm_sum: %.2f, sample_count: %.0f\n", norm_sum, sample_count);
 	}
-	printk("norm_sum: %.2f, sample_count: %.0f\n", norm_sum, sample_count);
 #endif
 	wait_for_threads();  // TODO: let the data cook or something idk why this has to be
 						 // here to work
-	magneto_current_calibration(a_inv, ata, norm_sum, sample_count);
+	if (ata != NULL)
+	{
+		magneto_current_calibration(a_inv, ata, norm_sum, sample_count);
+	}
 	magneto_reset();
 
 	printk("Calibration is complete.\n");
+
+	k_free(rawData);
+	k_free(pre_acc);
 	return 0;
 }
 #endif
 
 // TODO: terrible name
-static void sensor_sample_mag_magneto_sample(const float a[3], const float m[3])
+static void sensor_sample_mag_magneto_sample(const float *a, const float *m)
 {
+	if (a == NULL || m == NULL || ata == NULL)
+	{
+		return;
+	}
+
 	magneto_sample(m[0], m[1], m[2], ata, &norm_sum, &sample_count);  // 400us
 	uint8_t new_magneto_progress = magneto_progress;
 	new_magneto_progress |= check_sides(a);
@@ -1041,6 +1559,7 @@ static int sensor_calibration_request(int id)
 
 static void calibration_thread(void)
 {
+	sensor_calibration_init();  // Initialize dynamic memory
 	sensor_calibration_read();
 	// TODO: be able to block the sensor while doing certain operations
 	// TODO: reset fusion on calibration finished

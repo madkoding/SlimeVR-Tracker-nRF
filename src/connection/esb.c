@@ -277,7 +277,7 @@ int esb_initialize(bool tx)
 		// config.mode = ESB_MODE_PTX;
 		config.event_handler = event_handler;
 		config.bitrate = ESB_BITRATE_1MBPS;
-		// config.crc = ESB_CRC_16BIT;
+		config.crc = ESB_CRC_16BIT;
 		config.tx_output_power = CONFIG_RADIO_TX_POWER;
 		config.retransmit_delay = retransmit_delay_with_jitter;
 		config.retransmit_count = CONFIG_RADIO_RETRANSMIT_COUNT;
@@ -293,7 +293,7 @@ int esb_initialize(bool tx)
 		config.mode = ESB_MODE_PRX;
 		config.event_handler = event_handler;
 		config.bitrate = ESB_BITRATE_1MBPS;
-		// config.crc = ESB_CRC_16BIT;
+		config.crc = ESB_CRC_16BIT;
 		config.tx_output_power = CONFIG_RADIO_TX_POWER;
 		config.retransmit_delay = retransmit_delay_with_jitter;
 		config.retransmit_count = CONFIG_RADIO_RETRANSMIT_COUNT;
