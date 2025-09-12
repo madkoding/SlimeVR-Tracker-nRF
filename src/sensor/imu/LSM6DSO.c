@@ -610,10 +610,8 @@ int lsm6dso_ext_write_read(
 	);  // clear XLDA
 	uint8_t status = 0;
 	int64_t timeout = k_uptime_get() + 10;
-	while ((status & 0x01) && k_uptime_get() < timeout)  // XLDA
-	{
+	while ((status & 0x01) && k_uptime_get() < timeout) // XLDA
 		err |= ssi_reg_read_byte(SENSOR_INTERFACE_DEV_IMU, LSM6DSV_STATUS_REG, &status);
-	}
 	status = 0;
 	timeout = k_uptime_get() + 10;
 	while ((status & 0x01) && k_uptime_get() < timeout)  // SENS_HUB_ENDOP

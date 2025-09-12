@@ -68,10 +68,12 @@ int sensor_interface_register_sensor_mag_ext(
 {
 	switch (sensor_interface_dev_spec[SENSOR_INTERFACE_DEV_IMU])
 	{
-		case SENSOR_INTERFACE_SPEC_SPI:
-			if (ext_ssi != NULL)
+	case SENSOR_INTERFACE_SPEC_SPI:
+		if (ext_ssi != NULL)
+		{
+			if (burst > ext_ssi->ext_burst)
 			{
-				if (burst < ext_ssi->ext_burst)
+				if (min_burst > ext_ssi->ext_burst)
 				{
 					if (min_burst < ext_ssi->ext_burst)
 					{
@@ -86,17 +88,19 @@ int sensor_interface_register_sensor_mag_ext(
 					= SENSOR_INTERFACE_SPEC_EXT;
 				return 0;
 			}
-			else
-			{
-				LOG_ERR(
-					"IMU must configure external interface before registering "
-					"magnetometer"
-				);
-				return -1;
-			}
-			break;
-		case SENSOR_INTERFACE_SPEC_I2C:
-			LOG_ERR("External interface not used over I2C");
+			min_ext_burst = min_burst; // fallback if num_read exceeds ext_burst
+			ext_addr = addr;
+			sensor_interface_dev_spec[SENSOR_INTERFACE_DEV_MAG] = SENSOR_INTERFACE_SPEC_EXT;
+			return 0;
+		}
+		else
+		{
+			LOG_ERR("IMU must configure external interface before registering magnetometer");
+			return -1;
+		}
+		break;
+	case SENSOR_INTERFACE_SPEC_I2C:
+		LOG_ERR("External interface not used over I2C");
 			return -1;
 		default:
 			LOG_ERR("IMU must be registered before registering magnetometer");

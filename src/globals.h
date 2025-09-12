@@ -42,6 +42,23 @@
  * standing up: Top side of the device is +Y Front side (facing out) is +Z
  */
 
+// Board-specific configurations
+#if defined(CONFIG_BOARD_SLIMEVRMINI_P1_UF2) || defined(CONFIG_BOARD_SLIMEVRMINI_P2_UF2)
+#define SENSOR_MAGNETOMETER_AXES_ALIGNMENT -mx, mz, -my
+#define SENSOR_QUATERNION_CORRECTION 0.7071f, 0.7071f, 0.0f, 0.0f
+#endif
+#if defined(CONFIG_BOARD_SLIMEVRMINI_P4_UF2)
+#define SENSOR_GYROSCOPE_AXES_ALIGNMENT gx, gy, gz
+#define SENSOR_ACCELEROMETER_AXES_ALIGNMENT ax, ay, az
+#define SENSOR_MAGNETOMETER_AXES_ALIGNMENT my, -mx, -mz
+#define SENSOR_QUATERNION_CORRECTION 0.7071f, 0.0f, 0.0f, 0.7071f 
+#endif
+
+#if defined(CONFIG_BOARD_SLIMENRF_R1) || defined(CONFIG_BOARD_SLIMENRF_R2) || defined(CONFIG_BOARD_SLIMENRF_R3)
+#define SENSOR_QUATERNION_CORRECTION 0.0f, 0.7071f, 0.7071f, 0.0f
+#endif
+
+// Default configurations if not defined by board-specific settings
 #ifndef SENSOR_GYROSCOPE_AXES_ALIGNMENT
 #define SENSOR_GYROSCOPE_AXES_ALIGNMENT \
 	gx, gy, gz  // gyro axes alignment to sensor body
