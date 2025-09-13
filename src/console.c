@@ -30,6 +30,9 @@
 
 LOG_MODULE_REGISTER(console, LOG_LEVEL_INF);
 
+// Forward declarations
+static void console_thread(void);
+
 static void usb_init_thread(void);
 K_THREAD_DEFINE(
 	usb_init_thread_id,
