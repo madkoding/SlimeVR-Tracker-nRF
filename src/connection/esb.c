@@ -43,6 +43,8 @@ uint32_t led_clock_offset = 0;
 uint32_t tx_errors = 0;
 int64_t last_tx_success = 0;
 
+#define ESB_RF_CHANNEL 76
+
 static struct esb_payload rx_payload;
 static struct esb_payload tx_payload = ESB_CREATE_PAYLOAD(0,
 														  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
@@ -228,42 +230,45 @@ int esb_initialize(bool tx)
 		// config.protocol = ESB_PROTOCOL_ESB_DPL;
 		// config.mode = ESB_MODE_PTX;
 		config.event_handler = event_handler;
-		// config.bitrate = ESB_BITRATE_2MBPS;
-		// config.crc = ESB_CRC_16BIT;
+		config.bitrate = ESB_BITRATE_1MBPS;
+		config.crc = ESB_CRC_16BIT;
 		config.tx_output_power = CONFIG_RADIO_TX_POWER;
-		// config.retransmit_delay = 600;
-		//config.retransmit_count = 0;
+		config.retransmit_delay = 600;
+		config.retransmit_count = 3;
 		//config.tx_mode = ESB_TXMODE_MANUAL;
 		// config.payload_length = 32;
 		config.selective_auto_ack = true; // TODO: while pairing, should be set to false
-//		config.use_fast_ramp_up = true;
+		config.use_fast_ramp_up = true;
 	}
 	else
 	{
 		// config.protocol = ESB_PROTOCOL_ESB_DPL;
 		config.mode = ESB_MODE_PRX;
 		config.event_handler = event_handler;
-		// config.bitrate = ESB_BITRATE_2MBPS;
-		// config.crc = ESB_CRC_16BIT;
+		config.bitrate = ESB_BITRATE_1MBPS;
+		config.crc = ESB_CRC_16BIT;
 		config.tx_output_power = CONFIG_RADIO_TX_POWER;
-		// config.retransmit_delay = 600;
-		// config.retransmit_count = 3;
+		config.retransmit_delay = 600;
+		config.retransmit_count = 3;
 		// config.tx_mode = ESB_TXMODE_AUTO;
 		// config.payload_length = 32;
 		config.selective_auto_ack = true;
-//		config.use_fast_ramp_up = true;
+		config.use_fast_ramp_up = true;
 	}
 
 	err = esb_init(&config);
 
 	if (!err)
-		esb_set_base_address_0(base_addr_0);
+		err = esb_set_rf_channel(ESB_RF_CHANNEL);
 
 	if (!err)
-		esb_set_base_address_1(base_addr_1);
+		err = esb_set_base_address_0(base_addr_0);
 
 	if (!err)
-		esb_set_prefixes(addr_prefix, ARRAY_SIZE(addr_prefix));
+		err = esb_set_base_address_1(base_addr_1);
+
+	if (!err)
+		err = esb_set_prefixes(addr_prefix, ARRAY_SIZE(addr_prefix));
 
 	if (err)
 	{
