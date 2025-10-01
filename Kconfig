@@ -93,7 +93,7 @@ config IGNORE_RESET
     bool "Ignore reset"
     default y
     help
-        If sw0 is available, don't perform any extra actions on reset.
+        If sw0 is available, dont perform any extra actions on reset.
 
 config USER_SHUTDOWN
     bool "User shutdown support"
