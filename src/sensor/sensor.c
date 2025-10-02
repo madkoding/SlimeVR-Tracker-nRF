@@ -192,8 +192,18 @@ void sensor_scan_thread(void)
 
 int sensor_scan(void)
 {
+	// Timeout protection for concurrent scan attempts
+	int64_t timeout_start = k_uptime_get();
 	while (sensor_sensor_scanning)
+	{
+		if (k_uptime_get() - timeout_start > 5000) // 5s timeout
+		{
+			LOG_ERR("Timeout waiting for concurrent sensor scan");
+			sensor_sensor_scanning = false;
+			break;
+		}
 		k_usleep(1); // already scanning
+	}
 	if (sensor_sensor_init)
 		return 0; // already initialized
 	sensor_sensor_scanning = true;
