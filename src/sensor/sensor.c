@@ -1136,10 +1136,19 @@ void sensor_loop(void)
 	}
 }
 
-void wait_for_threads(void) // TODO: add timeout
+void wait_for_threads(void)
 {
+	int64_t timeout_start = k_uptime_get();
 	while (main_running)
+	{
+		if (k_uptime_get() - timeout_start > 5000) // 5s timeout
+		{
+			LOG_ERR("Timeout waiting for threads, forcing stop");
+			main_running = false;
+			break;
+		}
 		k_usleep(1); // bane of my existence. don't use k_yield()!!!!!!
+	}
 }
 
 void main_imu_suspend(void)
