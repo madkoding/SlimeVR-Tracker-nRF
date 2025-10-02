@@ -498,19 +498,25 @@ void sensor_shutdown(void) // Communicate all imus to shut down
 
 uint8_t sensor_setup_WOM(void)
 {
-	int err = sensor_request_scan(false); // try initialization if possible
-	if (!err)
+	// Don't try to re-initialize sensors during shutdown
+	// Just configure WOM on the already initialized sensor
+	if (!sensor_sensor_init)
 	{
-		sys_interface_resume();
-		err = sensor_imu->setup_WOM();
-		sys_interface_suspend();
-		return err;
+		LOG_ERR("Sensors not initialized, cannot configure IMU wake up");
+		return 0;
 	}
-	else
+	
+	sys_interface_resume();
+	uint8_t err = sensor_imu->setup_WOM();
+	sys_interface_suspend();
+	
+	if (err == 0)
 	{
 		LOG_ERR("Failed to configure IMU wake up");
 		return 0;
 	}
+	
+	return err;
 }
 
 void sensor_fusion_invalidate(void)
