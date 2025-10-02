@@ -314,8 +314,29 @@ static void button_thread(void)
 {
 	int num_presses = 0;
 	int64_t last_press = 0;
+	bool last_button_state = false;
+	int64_t last_state_change = 0;
+	
 	while (1)
 	{
+		// Button stuck detection protection
+		bool current_button_state = button_read();
+		if (current_button_state != last_button_state)
+		{
+			last_state_change = k_uptime_get();
+			last_button_state = current_button_state;
+		}
+		else if (current_button_state && k_uptime_get() - last_state_change > 30000)
+		{
+			// Button stuck pressed for 30 seconds - likely hardware issue
+			LOG_ERR("Button appears stuck pressed, ignoring");
+			press_time = 0;
+			last_press_duration = 0;
+			last_state_change = k_uptime_get();
+			k_msleep(1000); // Wait before checking again
+			continue;
+		}
+		
 		if (press_time && k_uptime_get() - press_time > 50) // debounce
 		{
 			if (!get_status(SYS_STATUS_BUTTON_PRESSED))
