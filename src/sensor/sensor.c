@@ -1120,15 +1120,38 @@ void wait_for_threads(void) // TODO: add timeout
 		k_usleep(1); // bane of my existence. don't use k_yield()!!!!!!
 }
 
-void main_imu_suspend(void) // TODO: add timeout
+void main_imu_suspend(void)
 {
 	main_suspended = true;
 	if (!main_running) // don't suspend if already stopped (TODO: may be called from sensor thread)
 		return;
+	
+	// Timeout protection for sensor scanning
+	int64_t timeout_start = k_uptime_get();
 	while (sensor_sensor_scanning)
+	{
+		if (k_uptime_get() - timeout_start > 1000) // 1s timeout
+		{
+			LOG_ERR("Timeout waiting for sensor scan, forcing exit");
+			sensor_sensor_scanning = false;
+			break;
+		}
 		k_usleep(1); // try not to interrupt scanning
+	}
+	
+	// Timeout protection for main loop
+	timeout_start = k_uptime_get();
 	while (main_running) // TODO: change to detect if i2c is busy
+	{
+		if (k_uptime_get() - timeout_start > 1000) // 1s timeout
+		{
+			LOG_ERR("Timeout waiting for sensor thread, forcing exit");
+			main_running = false;
+			break;
+		}
 		k_usleep(1); // try not to interrupt anything actually
+	}
+	
 	k_thread_suspend(&sensor_thread_id);
 	LOG_INF("Suspended sensor thread");
 }
