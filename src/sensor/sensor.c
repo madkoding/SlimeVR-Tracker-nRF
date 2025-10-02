@@ -100,6 +100,9 @@ static bool sensor_sensor_scanning;
 
 static bool main_suspended;
 
+static int consecutive_sensor_timeouts = 0;
+#define MAX_SENSOR_TIMEOUTS 10
+
 static bool mag_available;
 #if MAG_ENABLED
 static bool mag_enabled = true; // TODO: toggle from server
@@ -1091,12 +1094,31 @@ void sensor_loop(void)
 		}
 
 #if IMU_INT_EXISTS
-		main_wfi = true; // TODO: this is terrible
-		k_msleep(50); // will be resumed by interrupt // TODO: dont use hard timeout // TODO: need to use sensor_update_time_ms
-		if (main_wfi) // timeout
+		main_wfi = true;
+		k_msleep(50); // will be resumed by interrupt
+		if (main_wfi) // timeout occurred
 		{
-			LOG_WRN("Sensor interrupt timeout");
+			LOG_ERR("Sensor interrupt timeout #%d", consecutive_sensor_timeouts + 1);
 			main_wfi = false;
+			consecutive_sensor_timeouts++;
+			
+			if (consecutive_sensor_timeouts >= MAX_SENSOR_TIMEOUTS)
+			{
+				LOG_ERR("Too many consecutive sensor timeouts, triggering recovery");
+				consecutive_sensor_timeouts = 0;
+				main_ok = false;
+				set_status(SYS_STATUS_SENSOR_ERROR, true);
+				
+				// Request sensor rescan to recover
+				k_msleep(100); // Give time for logging
+				sensor_request_scan(true);
+				break; // Exit loop to allow recovery
+			}
+		}
+		else
+		{
+			// Reset counter on successful interrupt
+			consecutive_sensor_timeouts = 0;
 		}
 #else
 		// TODO: old behavior
