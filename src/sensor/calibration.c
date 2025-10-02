@@ -348,17 +348,21 @@ static int sensor_wait_mag(float m[3], k_timeout_t timeout)
 static void sensor_calibrate_imu()
 {
 	float a_bias[3], g_bias[3];
-	LOG_INF("Calibrating main accelerometer and gyroscope zero rate offset");
-	LOG_INF("Rest the device on a stable surface");
+	LOG_INF("=== Starting Improved Zero Calibration ===");
+	LOG_INF("Place device on a STABLE, LEVEL surface");
+	LOG_INF("Avoid vibration sources (fans, speakers, etc.)");
+	LOG_INF("Calibration will take 10 seconds - DO NOT MOVE");
 
 	set_led(SYS_LED_PATTERN_LONG, SYS_LED_PRIORITY_SENSOR);
 	if (!wait_for_motion(false, 6)) // Wait for accelerometer to settle, timeout 3s
 	{
 		set_led(SYS_LED_PATTERN_OFF, SYS_LED_PRIORITY_SENSOR);
+		LOG_WRN("Calibration failed - device did not settle");
 		return; // Timeout, calibration failed
 	}
 
 	set_led(SYS_LED_PATTERN_ON, SYS_LED_PRIORITY_SENSOR);
+	LOG_INF("Device stable - starting 10s sampling...");
 	k_msleep(500); // Delay before beginning acquisition
 
 	if (imu_id == IMU_BMI270) // bmi270 specific
@@ -381,21 +385,39 @@ static void sensor_calibrate_imu()
 		k_msleep(500); // Delay before beginning acquisition
 	}
 
-	LOG_INF("Reading data");
 	sensor_calibration_clear(a_bias, g_bias, false);
 	int err = sensor_offsetBias(a_bias, g_bias);
-	if (err) // This takes about 3s
+	if (err) // This now takes about 10s
 	{
 		if (err == -1)
-			LOG_INF("Motion detected");
+		{
+			LOG_ERR("Calibration FAILED - Motion detected or unstable surface");
+			LOG_INF("Please retry on a more stable surface");
+		}
+		else if (err == -2)
+		{
+			LOG_ERR("Calibration FAILED - Sensor timeout");
+		}
 		a_bias[0] = NAN; // invalidate calibration
 	}
 	else
 	{
+		LOG_INF("=== Calibration SUCCESS ===");
 #if !CONFIG_SENSOR_USE_6_SIDE_CALIBRATION
-		LOG_INF("Accelerometer bias: %.5f %.5f %.5f", (double)a_bias[0], (double)a_bias[1], (double)a_bias[2]);
+		LOG_INF("Accel bias: [%.5f, %.5f, %.5f] g", (double)a_bias[0], (double)a_bias[1], (double)a_bias[2]);
 #endif
-		LOG_INF("Gyroscope bias: %.5f %.5f %.5f", (double)g_bias[0], (double)g_bias[1], (double)g_bias[2]);
+		LOG_INF("Gyro bias:  [%.5f, %.5f, %.5f] dps", (double)g_bias[0], (double)g_bias[1], (double)g_bias[2]);
+		
+		// Quality assessment
+		float gyro_mag = sqrtf(g_bias[0]*g_bias[0] + g_bias[1]*g_bias[1] + g_bias[2]*g_bias[2]);
+		if (gyro_mag < 1.0f)
+			LOG_INF("Calibration quality: EXCELLENT (bias < 1 dps)");
+		else if (gyro_mag < 3.0f)
+			LOG_INF("Calibration quality: GOOD (bias < 3 dps)");
+		else if (gyro_mag < 5.0f)
+			LOG_INF("Calibration quality: FAIR (bias < 5 dps)");
+		else
+			LOG_WRN("Calibration quality: POOR (bias > 5 dps) - consider recalibrating");
 	}
 	if (sensor_calibration_validate(a_bias, g_bias, false))
 	{
@@ -593,55 +615,136 @@ static int isAccRest(float *acc, float *pre_acc, float threshold, int *t, int re
 }
 #endif
 
-// TODO: setup 6 sided calibration (bias and scale, and maybe gyro ZRO?), setup temp calibration (particulary for gyro ZRO)
+// Improved zero calibration with better convergence and outlier rejection
 int sensor_offsetBias(float *dest1, float *dest2)
 {
 	float rawData[3], last_a[3];
+	float accel_sum[3] = {0}, gyro_sum[3] = {0};
+	float accel_sq_sum[3] = {0}, gyro_sq_sum[3] = {0}; // For variance calculation
+	
 	if (sensor_wait_accel(last_a, K_MSEC(1000)))
 		return -2; // Timeout
+	
+	// Increased sampling time from 3s to 10s for better convergence
 	int64_t sampling_start_time = k_uptime_get();
+	const int64_t SAMPLING_DURATION_MS = 10000; // 10 seconds
+	const float MOTION_THRESHOLD = 0.05f; // Stricter motion detection (was 0.1)
+	const float GYRO_OUTLIER_THRESHOLD = 10.0f; // Reject samples > 10 dps (likely motion)
+	
 	int i = 0;
-	while (k_uptime_get() < sampling_start_time + 3000)
+	int rejected_samples = 0;
+	
+	while (k_uptime_get() < sampling_start_time + SAMPLING_DURATION_MS)
 	{
+		// Read accelerometer
 		if (sensor_wait_accel(rawData, K_MSEC(1000)))
 			return -2; // Timeout
-		if (!v_epsilon(rawData, last_a, 0.1))
+		
+		// Motion detection - more strict threshold
+		if (!v_epsilon(rawData, last_a, MOTION_THRESHOLD))
 			return -1; // Motion detected
+		
+		memcpy(last_a, rawData, sizeof(last_a));
+		
 #if !CONFIG_SENSOR_USE_6_SIDE_CALIBRATION
-		dest1[0] += rawData[0];
-		dest1[1] += rawData[1];
-		dest1[2] += rawData[2];
+		// Accumulate accel samples
+		accel_sum[0] += rawData[0];
+		accel_sum[1] += rawData[1];
+		accel_sum[2] += rawData[2];
+		accel_sq_sum[0] += rawData[0] * rawData[0];
+		accel_sq_sum[1] += rawData[1] * rawData[1];
+		accel_sq_sum[2] += rawData[2] * rawData[2];
 #endif
+		
+		// Read gyroscope
 		if (sensor_wait_gyro(rawData, K_MSEC(1000)))
 			return -2; // Timeout
-		dest2[0] += rawData[0];
-		dest2[1] += rawData[1];
-		dest2[2] += rawData[2];
+		
+		// Outlier rejection for gyro (reject if magnitude > threshold)
+		float gyro_mag = sqrtf(rawData[0]*rawData[0] + rawData[1]*rawData[1] + rawData[2]*rawData[2]);
+		if (gyro_mag > GYRO_OUTLIER_THRESHOLD)
+		{
+			rejected_samples++;
+			continue; // Skip this sample
+		}
+		
+		// Accumulate gyro samples
+		gyro_sum[0] += rawData[0];
+		gyro_sum[1] += rawData[1];
+		gyro_sum[2] += rawData[2];
+		gyro_sq_sum[0] += rawData[0] * rawData[0];
+		gyro_sq_sum[1] += rawData[1] * rawData[1];
+		gyro_sq_sum[2] += rawData[2] * rawData[2];
+		
 		i++;
 	}
-	LOG_INF("Samples: %d", i);
-#if !CONFIG_SENSOR_USE_6_SIDE_CALIBRATION
-	dest1[0] /= i;
-	dest1[1] /= i;
-	dest1[2] /= i;
-	if (dest1[0] > 0.9f)
-		dest1[0] -= 1.0f; // Remove gravity from the x-axis accelerometer bias calculation
-	else if (dest1[0] < -0.9f)
-		dest1[0] += 1.0f; // Remove gravity from the x-axis accelerometer bias calculation
-	else if (dest1[1] > 0.9f)
-		dest1[1] -= 1.0f; // Remove gravity from the y-axis accelerometer bias calculation
-	else if (dest1[1] < -0.9f)
-		dest1[1] += 1.0f; // Remove gravity from the y-axis accelerometer bias calculation
-	else if (dest1[2] > 0.9f)
-		dest1[2] -= 1.0f; // Remove gravity from the z-axis accelerometer bias calculation
-	else if (dest1[2] < -0.9f)
-		dest1[2] += 1.0f; // Remove gravity from the z-axis accelerometer bias calculation
-	else
+	
+	LOG_INF("Samples: %d (rejected: %d)", i, rejected_samples);
+	
+	if (i < 50) // Need at least 50 good samples
+	{
+		LOG_WRN("Insufficient samples for calibration");
 		return -1;
+	}
+	
+	// Calculate mean values
+#if !CONFIG_SENSOR_USE_6_SIDE_CALIBRATION
+	dest1[0] = accel_sum[0] / i;
+	dest1[1] = accel_sum[1] / i;
+	dest1[2] = accel_sum[2] / i;
+	
+	// Calculate and log variance for quality assessment
+	float accel_variance[3];
+	accel_variance[0] = (accel_sq_sum[0] / i) - (dest1[0] * dest1[0]);
+	accel_variance[1] = (accel_sq_sum[1] / i) - (dest1[1] * dest1[1]);
+	accel_variance[2] = (accel_sq_sum[2] / i) - (dest1[2] * dest1[2]);
+	float accel_std = sqrtf((accel_variance[0] + accel_variance[1] + accel_variance[2]) / 3.0f);
+	LOG_INF("Accel std dev: %.5f g", (double)accel_std);
+	
+	// Warn if variance is too high (indicates instability)
+	if (accel_std > 0.02f) // > 20 mg standard deviation
+	{
+		LOG_WRN("High accelerometer variance - surface may not be stable");
+	}
+	
+	// Remove gravity with better threshold (more precise gravity detection)
+	if (dest1[0] > 0.95f)
+		dest1[0] -= 1.0f; 
+	else if (dest1[0] < -0.95f)
+		dest1[0] += 1.0f;
+	else if (dest1[1] > 0.95f)
+		dest1[1] -= 1.0f;
+	else if (dest1[1] < -0.95f)
+		dest1[1] += 1.0f;
+	else if (dest1[2] > 0.95f)
+		dest1[2] -= 1.0f;
+	else if (dest1[2] < -0.95f)
+		dest1[2] += 1.0f;
+	else
+	{
+		LOG_WRN("Device not aligned with gravity axis");
+		return -1; // Not properly aligned
+	}
 #endif
-	dest2[0] /= i;
-	dest2[1] /= i;
-	dest2[2] /= i;
+	
+	dest2[0] = gyro_sum[0] / i;
+	dest2[1] = gyro_sum[1] / i;
+	dest2[2] = gyro_sum[2] / i;
+	
+	// Calculate and log gyro variance
+	float gyro_variance[3];
+	gyro_variance[0] = (gyro_sq_sum[0] / i) - (dest2[0] * dest2[0]);
+	gyro_variance[1] = (gyro_sq_sum[1] / i) - (dest2[1] * dest2[1]);
+	gyro_variance[2] = (gyro_sq_sum[2] / i) - (dest2[2] * dest2[2]);
+	float gyro_std = sqrtf((gyro_variance[0] + gyro_variance[1] + gyro_variance[2]) / 3.0f);
+	LOG_INF("Gyro std dev: %.5f dps", (double)gyro_std);
+	
+	// Warn if gyro variance is too high
+	if (gyro_std > 0.5f) // > 0.5 dps standard deviation
+	{
+		LOG_WRN("High gyroscope variance - check for vibration or temperature drift");
+	}
+	
 	return 0;
 }
 
