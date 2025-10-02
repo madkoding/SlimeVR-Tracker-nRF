@@ -23,6 +23,9 @@ uint8_t ext_addr = 0x00;
 uint8_t min_ext_burst = 0;
 static const sensor_ext_ssi_t *ext_ssi = NULL;
 
+static int consecutive_comm_errors = 0;
+#define MAX_COMM_ERRORS 100
+
 // TODO: only one active spi transaction at a time
 // TODO: spi burst read multiple buffers
 
@@ -218,16 +221,59 @@ int ssi_write_read(enum sensor_interface_dev dev, const void *write_buf, size_t 
 		printk("ssi_write_read: %zuB, %.2f MB/s\n", (num_write + num_read), (double)(num_write + num_read) / (double)k_ticks_to_us_near64(end - start));
 		return err;
 #else
-		return spi_transceive_dt(sensor_interface_dev_spi[dev], &tx, &rx);
+		{
+			int err = spi_transceive_dt(sensor_interface_dev_spi[dev], &tx, &rx);
+			if (err != 0)
+			{
+				consecutive_comm_errors++;
+				if (consecutive_comm_errors > MAX_COMM_ERRORS)
+				{
+					LOG_ERR("Critical: %d consecutive SPI comm errors", consecutive_comm_errors);
+				}
+			}
+			else
+			{
+				consecutive_comm_errors = 0;
+			}
+			return err;
+		}
 #endif
 	case SENSOR_INTERFACE_SPEC_I2C:
-		return i2c_write_read_dt(sensor_interface_dev_i2c[dev], write_buf, num_write, read_buf, num_read);
+		{
+			int err = i2c_write_read_dt(sensor_interface_dev_i2c[dev], write_buf, num_write, read_buf, num_read);
+			if (err != 0)
+			{
+				consecutive_comm_errors++;
+				if (consecutive_comm_errors > MAX_COMM_ERRORS)
+				{
+					LOG_ERR("Critical: %d consecutive I2C comm errors", consecutive_comm_errors);
+				}
+			}
+			else
+			{
+				consecutive_comm_errors = 0;
+			}
+			return err;
+		}
 	case SENSOR_INTERFACE_SPEC_EXT:
 		if (ext_ssi != NULL)
 		{
 			if (num_read > ext_ssi->ext_burst)
 				num_read = min_ext_burst;
-			return ext_ssi->ext_write_read(ext_addr, write_buf, num_write, read_buf, num_read);
+			int err = ext_ssi->ext_write_read(ext_addr, write_buf, num_write, read_buf, num_read);
+			if (err != 0)
+			{
+				consecutive_comm_errors++;
+				if (consecutive_comm_errors > MAX_COMM_ERRORS)
+				{
+					LOG_ERR("Critical: %d consecutive EXT comm errors", consecutive_comm_errors);
+				}
+			}
+			else
+			{
+				consecutive_comm_errors = 0;
+			}
+			return err;
 		}
 	default:
 		return -1;
