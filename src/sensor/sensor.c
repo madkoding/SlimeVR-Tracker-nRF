@@ -394,7 +394,17 @@ int sensor_request_scan(bool force)
 		LOG_INF("Requested sensor scan");
 	}
 	k_thread_create(&sensor_thread_id, sensor_thread_id_stack, K_THREAD_STACK_SIZEOF(sensor_thread_id_stack), (k_thread_entry_t)sensor_scan_thread, NULL, NULL, NULL, 7, 0, K_NO_WAIT);
-	k_thread_join(&sensor_thread_id, K_FOREVER); // wait for the thread to finish
+	
+	// Wait for scan thread with timeout instead of K_FOREVER
+	int join_result = k_thread_join(&sensor_thread_id, K_MSEC(10000)); // 10s timeout
+	if (join_result != 0)
+	{
+		LOG_ERR("Timeout waiting for sensor scan thread to complete");
+		k_thread_abort(&sensor_thread_id);
+		sensor_sensor_scanning = false;
+		return -1;
+	}
+	
 	if (sensor_sensor_init && force)
 	{		
 		k_thread_create(&sensor_thread_id, sensor_thread_id_stack, K_THREAD_STACK_SIZEOF(sensor_thread_id_stack), (k_thread_entry_t)sensor_loop, NULL, NULL, NULL, 7, 0, K_NO_WAIT);
