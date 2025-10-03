@@ -681,13 +681,14 @@ int sensor_init(void)
 	if (pin_config == 0)
 		return -1;
 	uint32_t int0_gpios = NRF_DT_GPIOS_TO_PSEL(ZEPHYR_USER_NODE, int0_gpios);
-	LOG_INF("FIFO THS/WM/WTM GPIO pin: %u, config: %u", int0_gpios, pin_config);
+	LOG_INF("SENSOR: Setting up INT0 on gpio0 pin %d, config: %u", int0.pin, pin_config);
 	uint32_t pull_flags = ((pin_config >> 4) == NRF_GPIO_PIN_PULLDOWN ? GPIO_PULL_DOWN : 0) | ((pin_config >> 4) == NRF_GPIO_PIN_PULLUP ? GPIO_PULL_UP : 0);
 	gpio_pin_configure_dt(&int0, GPIO_INPUT | pull_flags);
 	uint32_t int_flags = ((pin_config & 0xF) == NRF_GPIO_PIN_SENSE_LOW ? GPIO_INT_EDGE_FALLING : 0) | ((pin_config & 0xF) == NRF_GPIO_PIN_SENSE_HIGH ? GPIO_INT_EDGE_RISING : 0);
 	gpio_pin_interrupt_configure_dt(&int0, int_flags);
 	gpio_init_callback(&sensor_cb_data, sensor_interrupt_handler, BIT(int0.pin));
-	gpio_add_callback(int0.port, &sensor_cb_data);
+	int ret = gpio_add_callback(int0.port, &sensor_cb_data);
+	LOG_INF("SENSOR: gpio_add_callback returned: %d", ret);
 #else
 	LOG_WRN("IMU FIFO THS/WM/WTM GPIO does not exist");
 	LOG_WRN("IMU FIFO THS/WM/WTM not available");

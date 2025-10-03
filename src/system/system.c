@@ -284,9 +284,9 @@ static int64_t last_press_duration = 0;
 
 static void button_pressed(const struct device *dev, struct gpio_callback *cb, uint32_t pins)
 {
-	LOG_DBG("Button interrupt! pins=0x%x", pins);
+	LOG_INF("BTN INT! pins=0x%x", pins);
 	bool pressed = button_read();
-	LOG_DBG("Button state: %d", pressed);
+	LOG_INF("BTN state: %d", pressed);
 	int64_t current_time = k_uptime_get();
 	if (press_time && !pressed && current_time - press_time > 50) // debounce
 		last_press_duration = current_time - press_time;
@@ -299,10 +299,16 @@ static struct gpio_callback button_cb_data;
 
 static int sys_button_init(void)
 {
-	gpio_pin_configure_dt(&button0, GPIO_INPUT);
-	gpio_pin_interrupt_configure_dt(&button0, GPIO_INT_EDGE_BOTH);
+	LOG_INF("Initializing button on gpio0 pin %d", button0.pin);
+	int ret;
+	ret = gpio_pin_configure_dt(&button0, GPIO_INPUT);
+	LOG_INF("gpio_pin_configure_dt returned: %d", ret);
+	ret = gpio_pin_interrupt_configure_dt(&button0, GPIO_INT_EDGE_BOTH);
+	LOG_INF("gpio_pin_interrupt_configure_dt returned: %d", ret);
 	gpio_init_callback(&button_cb_data, button_pressed, BIT(button0.pin));
-	gpio_add_callback(button0.port, &button_cb_data);
+	ret = gpio_add_callback(button0.port, &button_cb_data);
+	LOG_INF("gpio_add_callback returned: %d", ret);
+	LOG_INF("Button initialized successfully");
 	return 0;
 }
 
@@ -328,14 +334,13 @@ static void button_thread(void)
 	{
 		if (press_time && k_uptime_get() - press_time > 50) // debounce
 		{
-			LOG_DBG("Button being held, press_time=%lld", press_time);
 			if (!get_status(SYS_STATUS_BUTTON_PRESSED))
 				set_status(SYS_STATUS_BUTTON_PRESSED, true);
 			set_led(SYS_LED_PATTERN_ON, SYS_LED_PRIORITY_HIGHEST);
 		}
 		if (last_press_duration > 50) // debounce
 		{
-			LOG_DBG("Button released, duration=%lld", last_press_duration);
+			LOG_INF("BTN released, dur=%lld ms", last_press_duration);
 			if (!get_status(SYS_STATUS_BUTTON_PRESSED))
 				set_status(SYS_STATUS_BUTTON_PRESSED, true);
 			num_presses++;
