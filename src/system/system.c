@@ -274,7 +274,7 @@ int set_sensor_clock(bool enable, float rate, float *actual_rate)
 static const struct gpio_dt_spec button0 = GPIO_DT_SPEC_GET(DT_ALIAS(sw0), gpios);
 static int64_t press_time = 0;
 static int64_t last_press_duration = 0;
-static int64_t last_button_interrupt_time = 0;
+static int64_t last_button_interrupt_time = -1; // -1 = not initialized yet
 static int consecutive_button_timeouts = 0;
 #define MAX_BUTTON_TIMEOUTS 10  // 2 seconds timeout (10 * 200ms checks)
 
@@ -323,23 +323,36 @@ static void button_thread(void)
 	int64_t last_state_change = 0;
 	int64_t last_button_check = k_uptime_get();
 	
+	// Initialize button interrupt time on first run
+	if (last_button_interrupt_time == -1)
+	{
+		last_button_interrupt_time = k_uptime_get();
+	}
+	
 	while (1)
 	{
-		// Button GPIO interrupt recovery (similar to sensor)
+		// Button GPIO interrupt recovery
+		// Only check if button state changes but we don't get interrupts
 		int64_t current_time = k_uptime_get();
+		bool current_button_state = button_read();
+		
 		if (current_time - last_button_check > 200) // Check every 200ms
 		{
 			last_button_check = current_time;
 			
-			// Check if we haven't received interrupts but button state changed
-			bool current_button_state = button_read();
-			if (current_time - last_button_interrupt_time > 2000) // No interrupt in 2 seconds
+			// Detect if button state changed but no interrupt was received
+			// This indicates a GPIO interrupt failure
+			static bool last_polled_state = false;
+			bool state_changed = (current_button_state != last_polled_state);
+			bool interrupt_received = (current_time - last_button_interrupt_time < 200);
+			
+			if (state_changed && !interrupt_received && current_time > 5000) // Boot grace period
 			{
 				consecutive_button_timeouts++;
 				
 				if (consecutive_button_timeouts >= MAX_BUTTON_TIMEOUTS)
 				{
-					LOG_WRN("Button GPIO interrupt may be lost, attempting recovery");
+					LOG_WRN("Button GPIO interrupt lost (state changed but no interrupt)");
 					consecutive_button_timeouts = 0;
 					
 					// Re-initialize button GPIO interrupt
@@ -355,12 +368,15 @@ static void button_thread(void)
 			}
 			else
 			{
-				consecutive_button_timeouts = 0; // Reset on successful interrupt
+				if (interrupt_received)
+					consecutive_button_timeouts = 0; // Reset on successful interrupt
 			}
+			
+			last_polled_state = current_button_state;
 		}
 		
 		// Button stuck detection protection
-		bool current_button_state = button_read();
+		// current_button_state already read above
 		if (current_button_state != last_button_state)
 		{
 			last_state_change = k_uptime_get();
