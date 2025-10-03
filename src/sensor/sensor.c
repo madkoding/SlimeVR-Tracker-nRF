@@ -1164,32 +1164,32 @@ void sensor_loop(void)
 				
 				// Safe recovery: Re-initialize GPIO interrupt without killing the thread
 				// This preserves the thread state and fixes the most common issue
+				// IMPORTANT: Do NOT use gpio_remove_callback() as it removes ALL callbacks 
+				// from the port (gpio0), including button callbacks!
 #if IMU_INT_EXISTS
-				// Remove old callback
-				gpio_remove_callback(int0.port, &sensor_cb_data);
-				
-				// Re-configure GPIO interrupt from scratch
+				// Re-configure GPIO interrupt from scratch WITHOUT removing callbacks
 				float sensor_actual_time = MIN(accel_actual_time, gyro_actual_time);
 				float sensor_fifo_threshold = 0.006f / sensor_actual_time;
 				uint8_t pin_config = sensor_imu->setup_DRDY(sensor_fifo_threshold);
 				
 				if (pin_config != 0)
 				{
+					// Reconfigure the pin and interrupt without touching the callback system
 					uint32_t pull_flags = ((pin_config >> 4) == NRF_GPIO_PIN_PULLDOWN ? GPIO_PULL_DOWN : 0) | 
 					                      ((pin_config >> 4) == NRF_GPIO_PIN_PULLUP ? GPIO_PULL_UP : 0);
 					gpio_pin_configure_dt(&int0, GPIO_INPUT | pull_flags);
 					uint32_t int_flags = ((pin_config & 0xF) == NRF_GPIO_PIN_SENSE_LOW ? GPIO_INT_EDGE_FALLING : 0) | 
 					                     ((pin_config & 0xF) == NRF_GPIO_PIN_SENSE_HIGH ? GPIO_INT_EDGE_RISING : 0);
 					gpio_pin_interrupt_configure_dt(&int0, int_flags);
-					gpio_init_callback(&sensor_cb_data, sensor_interrupt_handler, BIT(int0.pin));
-					gpio_add_callback(int0.port, &sensor_cb_data);
+					// NOTE: We don't re-initialize the callback since it's already set up
+					// and removing/re-adding would affect other GPIO callbacks on the same port
 					
-					LOG_INF("GPIO interrupt callback successfully re-initialized");
+					LOG_INF("GPIO interrupt successfully re-configured");
 					set_status(SYS_STATUS_SENSOR_ERROR, false); // Clear error after successful recovery
 				}
 				else
 				{
-					LOG_ERR("Failed to re-initialize GPIO interrupt - manual reset required");
+					LOG_ERR("Failed to re-configure GPIO interrupt - manual reset required");
 					main_ok = false;
 					set_status(SYS_STATUS_SENSOR_ERROR, true);
 				}
