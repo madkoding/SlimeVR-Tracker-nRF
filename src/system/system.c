@@ -343,36 +343,42 @@ static void button_thread(void)
 			// Detect if button state changed but no interrupt was received
 			// This indicates a GPIO interrupt failure
 			static bool last_polled_state = false;
+			static int64_t last_polled_time = 0;
 			bool state_changed = (current_button_state != last_polled_state);
-			bool interrupt_received = (current_time - last_button_interrupt_time < 200);
 			
-			if (state_changed && !interrupt_received && current_time > 5000) // Boot grace period
+			if (state_changed && current_time > 5000) // Boot grace period
 			{
-				consecutive_button_timeouts++;
+				// Check if interrupt happened AFTER the last poll (meaning it detected this change)
+				bool interrupt_detected_change = (last_button_interrupt_time > last_polled_time);
 				
-				if (consecutive_button_timeouts >= MAX_BUTTON_TIMEOUTS)
+				if (!interrupt_detected_change)
 				{
-					LOG_WRN("Button GPIO interrupt lost (state changed but no interrupt)");
-					consecutive_button_timeouts = 0;
+					consecutive_button_timeouts++;
 					
-					// Re-initialize button GPIO interrupt
-					gpio_remove_callback(button0.port, &button_cb_data);
-					gpio_pin_configure_dt(&button0, GPIO_INPUT);
-					gpio_pin_interrupt_configure_dt(&button0, GPIO_INT_EDGE_BOTH);
-					gpio_init_callback(&button_cb_data, button_interrupt_handler, BIT(button0.pin));
-					gpio_add_callback(button0.port, &button_cb_data);
-					
-					LOG_INF("Button GPIO interrupt re-initialized");
-					last_button_interrupt_time = current_time; // Reset timer
+					if (consecutive_button_timeouts >= MAX_BUTTON_TIMEOUTS)
+					{
+						LOG_WRN("Button GPIO interrupt lost (state changed but no interrupt)");
+						consecutive_button_timeouts = 0;
+						
+						// Re-initialize button GPIO interrupt
+						gpio_remove_callback(button0.port, &button_cb_data);
+						gpio_pin_configure_dt(&button0, GPIO_INPUT);
+						gpio_pin_interrupt_configure_dt(&button0, GPIO_INT_EDGE_BOTH);
+						gpio_init_callback(&button_cb_data, button_interrupt_handler, BIT(button0.pin));
+						gpio_add_callback(button0.port, &button_cb_data);
+						
+						LOG_INF("Button GPIO interrupt re-initialized");
+						last_button_interrupt_time = current_time; // Reset timer
+					}
 				}
-			}
-			else
-			{
-				if (interrupt_received)
-					consecutive_button_timeouts = 0; // Reset on successful interrupt
+				else
+				{
+					consecutive_button_timeouts = 0; // Reset on successful interrupt detection
+				}
 			}
 			
 			last_polled_state = current_button_state;
+			last_polled_time = current_time;
 		}
 		
 		// Button stuck detection protection
