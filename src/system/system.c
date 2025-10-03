@@ -284,7 +284,9 @@ static int64_t last_press_duration = 0;
 
 static void button_pressed(const struct device *dev, struct gpio_callback *cb, uint32_t pins)
 {
+	LOG_DBG("Button interrupt! pins=0x%x", pins);
 	bool pressed = button_read();
+	LOG_DBG("Button state: %d", pressed);
 	int64_t current_time = k_uptime_get();
 	if (press_time && !pressed && current_time - press_time > 50) // debounce
 		last_press_duration = current_time - press_time;
@@ -321,16 +323,19 @@ static void button_thread(void)
 {
 	int num_presses = 0;
 	int64_t last_press = 0;
+	LOG_INF("Button thread started");
 	while (1)
 	{
 		if (press_time && k_uptime_get() - press_time > 50) // debounce
 		{
+			LOG_DBG("Button being held, press_time=%lld", press_time);
 			if (!get_status(SYS_STATUS_BUTTON_PRESSED))
 				set_status(SYS_STATUS_BUTTON_PRESSED, true);
 			set_led(SYS_LED_PATTERN_ON, SYS_LED_PRIORITY_HIGHEST);
 		}
 		if (last_press_duration > 50) // debounce
 		{
+			LOG_DBG("Button released, duration=%lld", last_press_duration);
 			if (!get_status(SYS_STATUS_BUTTON_PRESSED))
 				set_status(SYS_STATUS_BUTTON_PRESSED, true);
 			num_presses++;
