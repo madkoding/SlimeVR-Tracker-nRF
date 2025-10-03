@@ -274,15 +274,11 @@ int set_sensor_clock(bool enable, float rate, float *actual_rate)
 static const struct gpio_dt_spec button0 = GPIO_DT_SPEC_GET(DT_ALIAS(sw0), gpios);
 static int64_t press_time = 0;
 static int64_t last_press_duration = 0;
-static int64_t last_button_interrupt_time = -1; // -1 = not initialized yet
-static int consecutive_button_timeouts = 0;
-#define MAX_BUTTON_TIMEOUTS 10  // 2 seconds timeout (10 * 200ms checks)
 
 static void button_interrupt_handler(const struct device *dev, struct gpio_callback *cb, uint32_t pins)
 {
 	bool pressed = button_read();
 	int64_t current_time = k_uptime_get();
-	last_button_interrupt_time = current_time; // Track last interrupt
 	
 	if (press_time && !pressed && current_time - press_time > 50) // debounce
 		last_press_duration = current_time - press_time;
@@ -321,80 +317,46 @@ static void button_thread(void)
 	int64_t last_press = 0;
 	bool last_button_state = false;
 	int64_t last_state_change = 0;
-	int64_t last_button_check = k_uptime_get();
 	
-	// Initialize button interrupt time on first run
-	if (last_button_interrupt_time == -1)
-	{
-		last_button_interrupt_time = k_uptime_get();
-	}
+	// Hybrid polling system: use polling as backup when interrupts fail
+	// This provides 50ms polling which is fast enough for button detection
+	// while still relying primarily on interrupts for responsiveness
 	
 	while (1)
 	{
-		// Button GPIO interrupt recovery
-		// Only check if button state changes but we don't get interrupts
-		int64_t current_time = k_uptime_get();
+		// Poll button state directly as backup (50ms intervals)
 		bool current_button_state = button_read();
+		int64_t current_time = k_uptime_get();
 		
-		if (current_time - last_button_check > 200) // Check every 200ms
+		// Detect state changes via polling (backup for missed interrupts)
+		if (current_button_state != last_button_state)
 		{
-			last_button_check = current_time;
+			last_state_change = current_time;
+			last_button_state = current_button_state;
 			
-			// Detect if button state changed but no interrupt was received
-			// This indicates a GPIO interrupt failure
-			static bool last_polled_state = false;
-			static int64_t last_polled_time = 0;
-			bool state_changed = (current_button_state != last_polled_state);
-			
-			if (state_changed && current_time > 5000) // Boot grace period
+			// Manually handle state change if interrupt didn't catch it
+			// This acts as a polling backup when GPIO interrupts fail
+			if (current_button_state && !press_time)
 			{
-				// Check if interrupt happened AFTER the last poll (meaning it detected this change)
-				bool interrupt_detected_change = (last_button_interrupt_time > last_polled_time);
-				
-				if (!interrupt_detected_change)
-				{
-					consecutive_button_timeouts++;
-					
-					if (consecutive_button_timeouts >= MAX_BUTTON_TIMEOUTS)
-					{
-						LOG_WRN("Button GPIO interrupt lost (state changed but no interrupt)");
-						consecutive_button_timeouts = 0;
-						
-						// Re-initialize button GPIO interrupt
-						gpio_remove_callback(button0.port, &button_cb_data);
-						gpio_pin_configure_dt(&button0, GPIO_INPUT);
-						gpio_pin_interrupt_configure_dt(&button0, GPIO_INT_EDGE_BOTH);
-						gpio_init_callback(&button_cb_data, button_interrupt_handler, BIT(button0.pin));
-						gpio_add_callback(button0.port, &button_cb_data);
-						
-						LOG_INF("Button GPIO interrupt re-initialized");
-						last_button_interrupt_time = current_time; // Reset timer
-					}
-				}
-				else
-				{
-					consecutive_button_timeouts = 0; // Reset on successful interrupt detection
-				}
+				// Button pressed but interrupt didn't catch it
+				press_time = current_time;
 			}
-			
-			last_polled_state = current_button_state;
-			last_polled_time = current_time;
+			else if (!current_button_state && press_time && current_time - press_time > 50)
+			{
+				// Button released but interrupt didn't catch it
+				last_press_duration = current_time - press_time;
+				press_time = 0;
+			}
 		}
 		
 		// Button stuck detection protection
-		// current_button_state already read above
-		if (current_button_state != last_button_state)
-		{
-			last_state_change = k_uptime_get();
-			last_button_state = current_button_state;
-		}
-		else if (current_button_state && k_uptime_get() - last_state_change > 30000)
+		if (current_button_state && current_time - last_state_change > 30000)
 		{
 			// Button stuck pressed for 30 seconds - likely hardware issue
 			LOG_ERR("Button appears stuck pressed, ignoring");
 			press_time = 0;
 			last_press_duration = 0;
-			last_state_change = k_uptime_get();
+			last_state_change = current_time;
 			k_msleep(1000); // Wait before checking again
 			continue;
 		}
@@ -438,7 +400,7 @@ static void button_thread(void)
 				set_status(SYS_STATUS_BUTTON_PRESSED, false); // TODO: is needed?
 			}
 		}
-		k_msleep(20);
+		k_msleep(50); // Poll every 50ms (hybrid: interrupts + polling backup)
 	}
 }
 #endif
