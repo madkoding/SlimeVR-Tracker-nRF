@@ -128,6 +128,13 @@ static inline void sys_nvs_init(void)
 	fs.sector_size = info.size; // sector_size equal to the pagesize
 	fs.sector_count = 4U; // 4 sectors
 	int err = nvs_mount(&fs);
+	if (err == -EDEADLK)
+	{
+		LOG_WRN("All sectors closed, erasing all sectors...");
+		err = flash_flatten(fs.flash_device, fs.offset, fs.sector_size * fs.sector_count);
+		if (!err)
+			err = nvs_mount(&fs);
+	}
 	if (err)
 	{
 		LOG_ERR("Failed to mount NVS");
@@ -275,11 +282,10 @@ static const struct gpio_dt_spec button0 = GPIO_DT_SPEC_GET(DT_ALIAS(sw0), gpios
 static int64_t press_time = 0;
 static int64_t last_press_duration = 0;
 
-static void button_interrupt_handler(const struct device *dev, struct gpio_callback *cb, uint32_t pins)
+static void button_pressed(const struct device *dev, struct gpio_callback *cb, uint32_t pins)
 {
 	bool pressed = button_read();
 	int64_t current_time = k_uptime_get();
-	
 	if (press_time && !pressed && current_time - press_time > 50) // debounce
 		last_press_duration = current_time - press_time;
 	else if (press_time && pressed) // unusual press event on button already pressed
@@ -293,7 +299,7 @@ static int sys_button_init(void)
 {
 	gpio_pin_configure_dt(&button0, GPIO_INPUT);
 	gpio_pin_interrupt_configure_dt(&button0, GPIO_INT_EDGE_BOTH);
-	gpio_init_callback(&button_cb_data, button_interrupt_handler, BIT(button0.pin));
+	gpio_init_callback(&button_cb_data, button_pressed, BIT(button0.pin));
 	gpio_add_callback(button0.port, &button_cb_data);
 	return 0;
 }
@@ -315,52 +321,8 @@ static void button_thread(void)
 {
 	int num_presses = 0;
 	int64_t last_press = 0;
-	bool last_button_state = false;
-	int64_t last_state_change = 0;
-	
-	// Hybrid polling system: use polling as backup when interrupts fail
-	// This provides 50ms polling which is fast enough for button detection
-	// while still relying primarily on interrupts for responsiveness
-	
 	while (1)
 	{
-		// Poll button state directly as backup (50ms intervals)
-		bool current_button_state = button_read();
-		int64_t current_time = k_uptime_get();
-		
-		// Detect state changes via polling (backup for missed interrupts)
-		if (current_button_state != last_button_state)
-		{
-			last_state_change = current_time;
-			last_button_state = current_button_state;
-			
-			// Manually handle state change if interrupt didn't catch it
-			// This acts as a polling backup when GPIO interrupts fail
-			if (current_button_state && !press_time)
-			{
-				// Button pressed but interrupt didn't catch it
-				press_time = current_time;
-			}
-			else if (!current_button_state && press_time && current_time - press_time > 50)
-			{
-				// Button released but interrupt didn't catch it
-				last_press_duration = current_time - press_time;
-				press_time = 0;
-			}
-		}
-		
-		// Button stuck detection protection
-		if (current_button_state && current_time - last_state_change > 30000)
-		{
-			// Button stuck pressed for 30 seconds - likely hardware issue
-			LOG_ERR("Button appears stuck pressed, ignoring");
-			press_time = 0;
-			last_press_duration = 0;
-			last_state_change = current_time;
-			k_msleep(1000); // Wait before checking again
-			continue;
-		}
-		
 		if (press_time && k_uptime_get() - press_time > 50) // debounce
 		{
 			if (!get_status(SYS_STATUS_BUTTON_PRESSED))
@@ -400,7 +362,7 @@ static void button_thread(void)
 				set_status(SYS_STATUS_BUTTON_PRESSED, false); // TODO: is needed?
 			}
 		}
-		k_msleep(50); // Poll every 50ms (hybrid: interrupts + polling backup)
+		k_msleep(20);
 	}
 }
 #endif
