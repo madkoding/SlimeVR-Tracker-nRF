@@ -71,8 +71,13 @@ static void set_params()
 	params.restThGyr = 1.2f;                     // Increased from 1.0 - account for residual gyro bias
 	params.restThAcc = 1.1f;                     // Increased from 1.0 - account for misalignment
 	
-	// Accelerometer fusion - balanced trust (accel may have small misalignment)
-	params.tauAcc = 3.5f;                        // Increased from 3.0 - slightly more conservative
+	// Accelerometer fusion - compensates for potential accel/gyro misalignment
+	// tauAcc controls trust in accelerometer vs gyroscope integration
+	// Higher values = more trust in gyro, less sensitive to accel misalignment/noise
+	// Recommended range: 3.0-5.0 (default VQF: 3.0)
+	// Current: 3.5 - balanced compromise for ICM-45686 without 6-side calibration
+	// To reduce misalignment sensitivity further, increase to 4.0-4.5
+	params.tauAcc = 4.5f;
 	
 	// Magnetometer fusion (QMC6309 + no hard-iron calibration)
 	params.tauMag = 10.0f;                       // Keep conservative for QMC6309
