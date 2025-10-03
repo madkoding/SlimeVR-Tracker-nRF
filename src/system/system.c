@@ -284,9 +284,7 @@ static int64_t last_press_duration = 0;
 
 static void button_pressed(const struct device *dev, struct gpio_callback *cb, uint32_t pins)
 {
-	LOG_INF("BTN INT! pins=0x%x", pins);
 	bool pressed = button_read();
-	LOG_INF("BTN state: %d", pressed);
 	int64_t current_time = k_uptime_get();
 	if (press_time && !pressed && current_time - press_time > 50) // debounce
 		last_press_duration = current_time - press_time;
@@ -299,16 +297,10 @@ static struct gpio_callback button_cb_data;
 
 static int sys_button_init(void)
 {
-	LOG_INF("Initializing button on gpio0 pin %d", button0.pin);
-	int ret;
-	ret = gpio_pin_configure_dt(&button0, GPIO_INPUT);
-	LOG_INF("gpio_pin_configure_dt returned: %d", ret);
-	ret = gpio_pin_interrupt_configure_dt(&button0, GPIO_INT_EDGE_BOTH);
-	LOG_INF("gpio_pin_interrupt_configure_dt returned: %d", ret);
+	gpio_pin_configure_dt(&button0, GPIO_INPUT);
+	gpio_pin_interrupt_configure_dt(&button0, GPIO_INT_EDGE_BOTH);
 	gpio_init_callback(&button_cb_data, button_pressed, BIT(button0.pin));
-	ret = gpio_add_callback(button0.port, &button_cb_data);
-	LOG_INF("gpio_add_callback returned: %d", ret);
-	LOG_INF("Button initialized successfully");
+	gpio_add_callback(button0.port, &button_cb_data);
 	return 0;
 }
 
@@ -329,7 +321,6 @@ static void button_thread(void)
 {
 	int num_presses = 0;
 	int64_t last_press = 0;
-	LOG_INF("Button thread started");
 	while (1)
 	{
 		if (press_time && k_uptime_get() - press_time > 50) // debounce
@@ -340,7 +331,6 @@ static void button_thread(void)
 		}
 		if (last_press_duration > 50) // debounce
 		{
-			LOG_INF("BTN released, dur=%lld ms", last_press_duration);
 			if (!get_status(SYS_STATUS_BUTTON_PRESSED))
 				set_status(SYS_STATUS_BUTTON_PRESSED, true);
 			num_presses++;
@@ -354,9 +344,21 @@ static void button_thread(void)
 			LOG_INF("Button was pressed %d times", num_presses);
 			last_press = 0;
 			if (num_presses == 1)
+			{
+				LOG_INF("Requesting system reboot...");
 				sys_request_system_reboot();
+			}
 #if CONFIG_USER_EXTRA_ACTIONS // TODO: extra actions are default until server can send commands to trackers
-			sys_reset_mode(num_presses - 1);
+			else
+			{
+				LOG_INF("Calling sys_reset_mode(%d)", num_presses - 1);
+				sys_reset_mode(num_presses - 1);
+			}
+#else
+			else
+			{
+				LOG_INF("Multiple presses ignored (CONFIG_USER_EXTRA_ACTIONS not enabled)");
+			}
 #endif
 			num_presses = 0;
 			set_led(SYS_LED_PATTERN_OFF, SYS_LED_PRIORITY_HIGHEST);
@@ -364,12 +366,17 @@ static void button_thread(void)
 		}
 		if (press_time && k_uptime_get() - press_time > 1000 && button_read()) // Button is being held
 		{
-			if (sys_user_shutdown()) // held for 5 seconds, reset pairing
+			if (sys_user_shutdown()) // held for 5 seconds, go to deep sleep
 			{
-				LOG_INF("Pairing requested");
-				esb_reset_pair();
+				LOG_INF("Deep sleep requested (button held 5 seconds)");
+				// TODO: Enter deep sleep mode here
+				// For now, just clear the press state
 				press_time = 0;
-				set_status(SYS_STATUS_BUTTON_PRESSED, false); // TODO: is needed?
+				set_status(SYS_STATUS_BUTTON_PRESSED, false);
+				
+				// Original pairing code (commented out):
+				// LOG_INF("Pairing requested");
+				// esb_reset_pair();
 			}
 		}
 		k_msleep(20);
@@ -465,15 +472,15 @@ void sys_reset_mode(uint8_t mode)
 	switch (mode)
 	{
 #if CONFIG_USER_EXTRA_ACTIONS
-	case 1:
-		LOG_INF("IMU calibration requested");
+	case 1: // 2 presses - Zero calibration
+		LOG_INF("Zero calibration requested");
 		sensor_request_calibration();
 		break;
+	// case 2: // 3 presses - Pairing reset
+	// 	LOG_INF("Pairing reset requested");
+	// 	esb_reset_pair();
+	// 	break;
 #endif
-	case 2: // Reset mode pairing reset
-		LOG_INF("Pairing reset requested");
-		esb_reset_pair();
-		break;
 #if DFU_EXISTS // Using DFU bootloader
 	case 3:
 	case 4: // Reset mode DFU
