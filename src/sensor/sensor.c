@@ -103,6 +103,12 @@ static bool main_suspended;
 static int consecutive_sensor_timeouts = 0;
 #define MAX_SENSOR_TIMEOUTS 20  // 1 second timeout (20 * 50ms) - balance between false positives and recovery time
 
+// Static FIFO buffer to avoid malloc/free overhead and prevent memory fragmentation
+// Size: 2048 bytes to handle worst case (ICM 20-byte packets at 1000Hz with 100ms update time)
+// Aligned to 4-byte boundary for optimal memory access
+#define FIFO_BUFFER_SIZE 2048
+static uint8_t fifo_buffer_static[FIFO_BUFFER_SIZE] __aligned(4);
+
 static bool mag_available;
 #if MAG_ENABLED
 static bool mag_enabled = true; // TODO: toggle from server
@@ -743,28 +749,14 @@ void sensor_loop(void)
 			float temp = sensor_imu->temp_read(); // TODO: use as calibration data
 			connection_update_sensor_temp(temp);
 
-			// Read gyroscope (FIFO)
+		// Read gyroscope (FIFO)
+		// Using static buffer instead of malloc to avoid memory fragmentation and allocation failures
+		uint8_t* rawData = fifo_buffer_static;
 #if CONFIG_SENSOR_USE_LOW_POWER_2
-			uint8_t* rawData = (uint8_t*)k_malloc(1900);  // Limit FIFO read to 2048 bytes (worst case is ICM 20 byte packet at 1000Hz and 100ms update time)
-			if (rawData == NULL)
-			{
-				LOG_ERR("Failed to allocate memory for FIFO buffer");
-				set_status(SYS_STATUS_SENSOR_ERROR, true);
-				main_ok = false;
-			}
-			uint16_t packets = sensor_imu->fifo_read(rawData, 1900); // TODO: name this better?
+		uint16_t packets = sensor_imu->fifo_read(rawData, 1900); // Limit FIFO read to 1900 bytes (worst case is ICM 20 byte packet at 1000Hz and 100ms update time)
 #else
-			uint8_t* rawData = (uint8_t*)k_malloc(1024);  // Limit FIFO read to 768 bytes (worst case is ICM 20 byte packet at 1000Hz and 33ms update time)
-			if (rawData == NULL)
-			{
-				LOG_ERR("Failed to allocate memory for FIFO buffer");
-				set_status(SYS_STATUS_SENSOR_ERROR, true);
-				main_ok = false;
-			}
-			uint16_t packets = sensor_imu->fifo_read(rawData, 1024); // TODO: name this better?
-#endif
-
-			// Debug info
+		uint16_t packets = sensor_imu->fifo_read(rawData, 1024); // Limit FIFO read to 1024 bytes (worst case is ICM 20 byte packet at 1000Hz and 33ms update time)
+#endif			// Debug info
 #if DEBUG
 			int64_t acquisition_time = k_uptime_ticks();
 			bool valid_acquisition = k_uptime_get() > ACQUISITION_START_MS && last_acquisition_time < acquisition_time; // wait before beginning profiling
@@ -866,18 +858,17 @@ void sensor_loop(void)
 					a_count++;
 				}
 
-				processed_packets++;
-			}
+			processed_packets++;
+		}
 
-			// Free the FIFO buffer
-			k_free(rawData);
+		// Note: No need to free rawData since it's a static buffer
 
 #if DEBUG
-			if (valid_acquisition)
-				total_processed_packets += processed_packets;
+		if (valid_acquisition)
+			total_processed_packets += processed_packets;
 #endif
 
-			if (mag_available && mag_enabled)
+		if (mag_available && mag_enabled)
 			{
 				bool mag_calibrated = true;
 				float uncalibrated_m[3] = {0};
