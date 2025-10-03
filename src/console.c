@@ -126,9 +126,9 @@ static void print_board(void)
 	printk("\n");
 	printk(COLOR_CYAN "╔════════════════════════════════════════════════════════════════╗\n");
 #if USB_EXISTS
-	printk("║  " COLOR_BOLD "%-61s" COLOR_RESET COLOR_CYAN "║\n" COLOR_RESET, CONFIG_USB_DEVICE_MANUFACTURER " " CONFIG_USB_DEVICE_PRODUCT);
+	printk(COLOR_CYAN "║  " COLOR_BOLD "%-61s" COLOR_RESET " " COLOR_CYAN "║\n" COLOR_RESET, CONFIG_USB_DEVICE_MANUFACTURER " " CONFIG_USB_DEVICE_PRODUCT);
 #else
-	printk("║  " COLOR_BOLD "%-61s" COLOR_RESET COLOR_CYAN "║\n" COLOR_RESET, "SlimeVR Tracker");
+	printk(COLOR_CYAN "║  " COLOR_BOLD "%-61s" COLOR_RESET " " COLOR_CYAN "║\n" COLOR_RESET, "SlimeVR Tracker");
 #endif
 	printk(COLOR_CYAN "╠════════════════════════════════════════════════════════════════╣\n");
 	
@@ -142,10 +142,10 @@ static void print_board(void)
 	
 	printk(COLOR_CYAN "║  " COLOR_RESET "%-62s" COLOR_CYAN "║\n", version_line);
 	printk(COLOR_CYAN "║  " COLOR_RESET "%-62s" COLOR_CYAN "║\n", build_line);
-	printk("╚════════════════════════════════════════════════════════════════╝\n" COLOR_RESET);
+	printk(COLOR_CYAN "╚════════════════════════════════════════════════════════════════╝\n" COLOR_RESET);
 
 	printk("\n" COLOR_GREEN "┌─ HARDWARE INFO\n");
-	printk("│  " COLOR_RESET "Board:  " COLOR_YELLOW "%s\n" COLOR_RESET, CONFIG_BOARD);
+	printk(COLOR_GREEN "│  " COLOR_RESET "Board:  " COLOR_YELLOW "%s\n" COLOR_RESET, CONFIG_BOARD);
 	printk(COLOR_GREEN "│  " COLOR_RESET "SOC:    " COLOR_YELLOW "%s\n" COLOR_RESET, CONFIG_SOC);
 	printk(COLOR_GREEN "│  " COLOR_RESET "Target: " COLOR_YELLOW "%s\n" COLOR_RESET, CONFIG_BOARD_TARGET);
 	printk(COLOR_GREEN "└" COLOR_RESET);
@@ -154,7 +154,7 @@ static void print_board(void)
 static void print_sensor(void)
 {
 	printk("\n" COLOR_BLUE "┌─ SENSOR CONFIGURATION\n");
-	printk("│ " COLOR_RESET "IMU:         " COLOR_YELLOW "%s\n" COLOR_RESET, (retained->imu_addr & 0x7F) != 0x7F ? sensor_get_sensor_imu_name() : "Not searching");
+	printk(COLOR_BLUE "│ " COLOR_RESET "IMU:         " COLOR_YELLOW "%s\n" COLOR_RESET, (retained->imu_addr & 0x7F) != 0x7F ? sensor_get_sensor_imu_name() : "Not searching");
 	if (retained->imu_reg != 0xFF)
 		printk(COLOR_BLUE "│   " COLOR_RESET "Interface: " COLOR_YELLOW "%s\n" COLOR_RESET, (retained->imu_reg & 0x80) ? "SPI" : "I2C");
 	
@@ -166,7 +166,7 @@ static void print_sensor(void)
 
 #if SENSOR_MAG_EXISTS
 	printk(COLOR_BLUE "│\n");
-	printk("│ " COLOR_RESET "Magnetometer: " COLOR_YELLOW "%s\n" COLOR_RESET, (retained->mag_addr & 0x7F) != 0x7F ? sensor_get_sensor_mag_name() : "Not searching");
+	printk(COLOR_BLUE "│ " COLOR_RESET "Magnetometer: " COLOR_YELLOW "%s\n" COLOR_RESET, (retained->mag_addr & 0x7F) != 0x7F ? sensor_get_sensor_mag_name() : "Not searching");
 	if (retained->mag_reg != 0xFF) {
 		char interface_str[50];
 		snprintf(interface_str, sizeof(interface_str), "%s%s", 
@@ -177,24 +177,24 @@ static void print_sensor(void)
 	printk(COLOR_BLUE "│   " COLOR_RESET "Address:   " COLOR_YELLOW "0x%02X%02X\n" COLOR_RESET, retained->mag_addr, retained->mag_reg);
 #endif
 	printk(COLOR_BLUE "│\n");
-	printk("│ " COLOR_RESET "Fusion:      " COLOR_YELLOW "%s\n" COLOR_RESET, sensor_get_sensor_fusion_name());
+	printk(COLOR_BLUE "│ " COLOR_RESET "Fusion:      " COLOR_YELLOW "%s\n" COLOR_RESET, sensor_get_sensor_fusion_name());
 	printk(COLOR_BLUE "└" COLOR_RESET);
 
 	printk("\n" COLOR_MAGENTA "┌─ CALIBRATION DATA\n");
 #if CONFIG_SENSOR_USE_6_SIDE_CALIBRATION
-	printk("│ " COLOR_RESET "Accelerometer matrix:\n");
+	printk(COLOR_MAGENTA "│ " COLOR_RESET "Accelerometer matrix:\n");
 	for (int i = 0; i < 3; i++) {
 		printk(COLOR_MAGENTA "│   " COLOR_YELLOW "%7.5f %7.5f %7.5f %7.5f\n" COLOR_RESET, 
 			(double)retained->accBAinv[0][i], (double)retained->accBAinv[1][i], 
 			(double)retained->accBAinv[2][i], (double)retained->accBAinv[3][i]);
 	}
 #else
-	printk("│ " COLOR_RESET "Accelerometer bias:\n");
+	printk(COLOR_MAGENTA "│ " COLOR_RESET "Accelerometer bias:\n");
 	printk(COLOR_MAGENTA "│   " COLOR_YELLOW "X: %8.5f  Y: %8.5f  Z: %8.5f\n" COLOR_RESET, 
 		(double)retained->accelBias[0], (double)retained->accelBias[1], (double)retained->accelBias[2]);
 #endif
 	printk(COLOR_MAGENTA "│\n");
-	printk("│ " COLOR_RESET "Gyroscope bias:\n");
+	printk(COLOR_MAGENTA "│ " COLOR_RESET "Gyroscope bias:\n");
 	printk(COLOR_MAGENTA "│   " COLOR_YELLOW "X: %8.5f  Y: %8.5f  Z: %8.5f\n" COLOR_RESET, 
 		(double)retained->gyroBias[0], (double)retained->gyroBias[1], (double)retained->gyroBias[2]);
 #if SENSOR_MAG_EXISTS
@@ -215,9 +215,9 @@ static void print_connection(void)
 	bool paired = retained->paired_addr[0];
 	printk("\n" COLOR_CYAN "┌─ CONNECTION STATUS\n");
 	if (paired) {
-		printk("│ " COLOR_RESET "Tracker ID:       " COLOR_YELLOW "%u\n" COLOR_RESET, retained->paired_addr[1]);
+		printk(COLOR_CYAN "│ " COLOR_RESET "Tracker ID:       " COLOR_YELLOW "%u\n" COLOR_RESET, retained->paired_addr[1]);
 	} else {
-		printk("│ " COLOR_RESET "Tracker ID:       " COLOR_YELLOW "Not paired\n" COLOR_RESET);
+		printk(COLOR_CYAN "│ " COLOR_RESET "Tracker ID:       " COLOR_YELLOW "Not paired\n" COLOR_RESET);
 	}
 	
 	printk(COLOR_CYAN "│ " COLOR_RESET "Device address:   " COLOR_YELLOW "%012llX\n" COLOR_RESET, *(uint64_t *)NRF_FICR->DEVICEADDR & 0xFFFFFFFFFFFF);
@@ -247,19 +247,19 @@ static void print_battery(void)
 		unplugged_time %= 3600000000;
 		uint8_t minutes = unplugged_time / 60000000;
 		if (hours > 0 || minutes > 0) {
-			printk("│ " COLOR_RESET "Battery level:    " COLOR_YELLOW "%.0f%% " COLOR_RESET "(Read %uh %umin ago)\n", 
+			printk(COLOR_GREEN "│ " COLOR_RESET "Battery level:    " COLOR_YELLOW "%.0f%% " COLOR_RESET "(Read %uh %umin ago)\n", 
 				(double)calibrated_pptt / 100.0, hours, minutes);
 		} else {
-			printk("│ " COLOR_RESET "Battery level:    " COLOR_YELLOW "%.0f%%\n" COLOR_RESET, (double)calibrated_pptt / 100.0);
+			printk(COLOR_GREEN "│ " COLOR_RESET "Battery level:    " COLOR_YELLOW "%.0f%%\n" COLOR_RESET, (double)calibrated_pptt / 100.0);
 		}
 	}
 	else if (unplugged_time == 0)
 	{
-		printk("│ " COLOR_RESET "Battery level:    " COLOR_YELLOW "Waiting for valid reading\n" COLOR_RESET);
+		printk(COLOR_GREEN "│ " COLOR_RESET "Battery level:    " COLOR_YELLOW "Waiting for valid reading\n" COLOR_RESET);
 	}
 	else
 	{
-		printk("│ " COLOR_RESET "Battery level:    " COLOR_YELLOW "None\n" COLOR_RESET);
+		printk(COLOR_GREEN "│ " COLOR_RESET "Battery level:    " COLOR_YELLOW "None\n" COLOR_RESET);
 	}
 	
 	if (remaining > 0)
