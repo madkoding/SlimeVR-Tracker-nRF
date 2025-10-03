@@ -1,6 +1,7 @@
 #include "globals.h"
 #include "system/system.h"
 #include "system/battery_tracker.h"
+#include "system/power.h"
 #include "sensor/sensor.h"
 #include "sensor/calibration.h"
 #include "connection/esb.h"
@@ -24,6 +25,8 @@
 
 #include <ctype.h>
 #include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
 
 LOG_MODULE_REGISTER(console, LOG_LEVEL_INF);
 
@@ -111,54 +114,96 @@ void console_thread_abort(void)
 
 static void print_board(void)
 {
+	printk("\n");
+	printk("╔════════════════════════════════════════════════════════════════╗\n");
 #if USB_EXISTS
-	printk(CONFIG_USB_DEVICE_MANUFACTURER " " CONFIG_USB_DEVICE_PRODUCT "\n");
+	printk("║  %-61s║\n", CONFIG_USB_DEVICE_MANUFACTURER " " CONFIG_USB_DEVICE_PRODUCT);
+#else
+	printk("║  %-61s║\n", "SlimeVR Tracker");
 #endif
+	printk("╠════════════════════════════════════════════════════════════════╣\n");
+	printk("║  ");
 	printk(FW_STRING);
+	printk("╚════════════════════════════════════════════════════════════════╝\n");
 
-	printk("\nBoard: " CONFIG_BOARD "\n");
-	printk("SOC: " CONFIG_SOC "\n");
-	printk("Target: " CONFIG_BOARD_TARGET "\n");
+	printk("\n┌─ HARDWARE INFO ────────────────────────────────────────────────┐\n");
+	printk("│  Board:  %-51s │\n", CONFIG_BOARD);
+	printk("│  SOC:    %-51s │\n", CONFIG_SOC);
+	printk("│  Target: %-51s │\n", CONFIG_BOARD_TARGET);
+	printk("└────────────────────────────────────────────────────────────────┘\n");
 }
 
 static void print_sensor(void)
 {
-	printk("IMU: %s\n", (retained->imu_addr & 0x7F) != 0x7F ? sensor_get_sensor_imu_name() : "Not searching");
+	printk("\n┌─ SENSOR CONFIGURATION ─────────────────────────────────────────┐\n");
+	printk("│ IMU:         %-49s │\n", (retained->imu_addr & 0x7F) != 0x7F ? sensor_get_sensor_imu_name() : "Not searching");
 	if (retained->imu_reg != 0xFF)
-		printk("Interface: %s\n", (retained->imu_reg & 0x80) ? "SPI" : "I2C");
-	printk("Address: 0x%02X%02X\n", retained->imu_addr, retained->imu_reg);
+		printk("│   Interface: %-49s │\n", (retained->imu_reg & 0x80) ? "SPI" : "I2C");
+	printk("│   Address:   0x%02X%02X                                          │\n", retained->imu_addr, retained->imu_reg);
+	
+	// IMU Wake-up support
+	bool wakeup_available = sys_imu_wakeup_available();
+	printk("│   Wake-up:   %-49s │\n", wakeup_available ? "Available" : "Not available");
 
 #if SENSOR_MAG_EXISTS
-	printk("\nMagnetometer: %s\n", (retained->mag_addr & 0x7F) != 0x7F ? sensor_get_sensor_mag_name() : "Not searching");
-	if (retained->mag_reg != 0xFF)
-		printk("Interface: %s%s\n", (retained->mag_reg & 0x80) ? "SPI" : "I2C", (retained->mag_addr & 0x80) ? ", external" : "");
-	printk("Address: 0x%02X%02X\n", retained->mag_addr, retained->mag_reg);
+	printk("│                                                                │\n");
+	printk("│ Magnetometer: %-47s │\n", (retained->mag_addr & 0x7F) != 0x7F ? sensor_get_sensor_mag_name() : "Not searching");
+	if (retained->mag_reg != 0xFF) {
+		char interface_str[50];
+		snprintf(interface_str, sizeof(interface_str), "%s%s", 
+			(retained->mag_reg & 0x80) ? "SPI" : "I2C", 
+			(retained->mag_addr & 0x80) ? ", external" : "");
+		printk("│   Interface: %-49s │\n", interface_str);
+	}
+	printk("│   Address:   0x%02X%02X                                          │\n", retained->mag_addr, retained->mag_reg);
 #endif
+	printk("│                                                                │\n");
+	printk("│ Fusion:      %-49s │\n", sensor_get_sensor_fusion_name());
+	printk("└────────────────────────────────────────────────────────────────┘\n");
 
+	printk("\n┌─ CALIBRATION DATA ─────────────────────────────────────────────┐\n");
 #if CONFIG_SENSOR_USE_6_SIDE_CALIBRATION
-	printk("\nAccelerometer matrix:\n");
+	printk("│ Accelerometer matrix:                                          │\n");
 	for (int i = 0; i < 3; i++)
-		printk("%.5f %.5f %.5f %.5f\n", (double)retained->accBAinv[0][i], (double)retained->accBAinv[1][i], (double)retained->accBAinv[2][i], (double)retained->accBAinv[3][i]);
+		printk("│   %7.5f %7.5f %7.5f %7.5f                          │\n", 
+			(double)retained->accBAinv[0][i], (double)retained->accBAinv[1][i], 
+			(double)retained->accBAinv[2][i], (double)retained->accBAinv[3][i]);
 #else
-	printk("\nAccelerometer bias: %.5f %.5f %.5f\n", (double)retained->accelBias[0], (double)retained->accelBias[1], (double)retained->accelBias[2]);
+	printk("│ Accelerometer bias:                                            │\n");
+	printk("│   X: %8.5f  Y: %8.5f  Z: %8.5f                  │\n", 
+		(double)retained->accelBias[0], (double)retained->accelBias[1], (double)retained->accelBias[2]);
 #endif
-	printk("Gyroscope bias: %.5f %.5f %.5f\n", (double)retained->gyroBias[0], (double)retained->gyroBias[1], (double)retained->gyroBias[2]);
+	printk("│                                                                │\n");
+	printk("│ Gyroscope bias:                                                │\n");
+	printk("│   X: %8.5f  Y: %8.5f  Z: %8.5f                  │\n", 
+		(double)retained->gyroBias[0], (double)retained->gyroBias[1], (double)retained->gyroBias[2]);
 #if SENSOR_MAG_EXISTS
-//	printk("Magnetometer bridge offset: %.5f %.5f %.5f\n", (double)retained->magBias[0], (double)retained->magBias[1], (double)retained->magBias[2]);
-	printk("Magnetometer matrix:\n");
+	printk("│                                                                │\n");
+	printk("│ Magnetometer matrix:                                           │\n");
 	for (int i = 0; i < 3; i++)
-		printk("%.5f %.5f %.5f %.5f\n", (double)retained->magBAinv[0][i], (double)retained->magBAinv[1][i], (double)retained->magBAinv[2][i], (double)retained->magBAinv[3][i]);
+		printk("│   %7.5f %7.5f %7.5f %7.5f                          │\n", 
+			(double)retained->magBAinv[0][i], (double)retained->magBAinv[1][i], 
+			(double)retained->magBAinv[2][i], (double)retained->magBAinv[3][i]);
 #endif
-
-	printk("\nFusion: %s\n", sensor_get_sensor_fusion_name());
+	printk("└────────────────────────────────────────────────────────────────┘\n");
 }
 
 static void print_connection(void)
 {
 	bool paired = retained->paired_addr[0];
-	printk(paired ? "Tracker ID: %u\n" : "\nTracker ID: None\n", retained->paired_addr[1]);
-	printk("Device address: %012llX\n", *(uint64_t *)NRF_FICR->DEVICEADDR & 0xFFFFFFFFFFFF);
-	printk(paired ? "Receiver address: %012llX\n" : "Receiver address: None\n", (*(uint64_t *)&retained->paired_addr[0] >> 16) & 0xFFFFFFFFFFFF);
+	printk("\n┌─ CONNECTION STATUS ────────────────────────────────────────────┐\n");
+	if (paired) {
+		printk("│ Tracker ID:       %-44u │\n", retained->paired_addr[1]);
+	} else {
+		printk("│ Tracker ID:       %-44s │\n", "Not paired");
+	}
+	printk("│ Device address:   %012llX                                │\n", *(uint64_t *)NRF_FICR->DEVICEADDR & 0xFFFFFFFFFFFF);
+	if (paired) {
+		printk("│ Receiver address: %012llX                                │\n", (*(uint64_t *)&retained->paired_addr[0] >> 16) & 0xFFFFFFFFFFFF);
+	} else {
+		printk("│ Receiver address: %-44s │\n", "None");
+	}
+	printk("└────────────────────────────────────────────────────────────────┘\n");
 }
 
 static void print_battery(void)
@@ -168,60 +213,75 @@ static void print_battery(void)
 	uint64_t unplugged_time = sys_get_last_unplugged_time();
 	uint64_t remaining = sys_get_battery_remaining_time_estimate();
 	uint64_t runtime = sys_get_battery_runtime_estimate();
+	
+	printk("\n┌─ BATTERY STATUS ───────────────────────────────────────────────┐\n");
+	
 	if (battery_mV > 0)
 	{
 		unplugged_time = k_ticks_to_us_floor64(k_uptime_ticks() - unplugged_time);
 		uint32_t hours = unplugged_time / 3600000000;
 		unplugged_time %= 3600000000;
 		uint8_t minutes = unplugged_time / 60000000;
-		if (hours > 0 || minutes > 0)
-			printk("Battery: %.0f%% (Read %uh %umin ago)\n", (double)calibrated_pptt / 100.0, hours, minutes);
-		else
-			printk("Battery: %.0f%%\n", (double)calibrated_pptt / 100.0);
+		if (hours > 0 || minutes > 0) {
+			char battery_str[50];
+			snprintf(battery_str, sizeof(battery_str), "%.0f%% (Read %uh %umin ago)", 
+				(double)calibrated_pptt / 100.0, hours, minutes);
+			printk("│ Battery level:    %-44s │\n", battery_str);
+		} else {
+			char battery_str[50];
+			snprintf(battery_str, sizeof(battery_str), "%.0f%%", (double)calibrated_pptt / 100.0);
+			printk("│ Battery level:    %-44s │\n", battery_str);
+		}
 	}
 	else if (unplugged_time == 0)
 	{
-		printk("Battery: Waiting for valid reading\n");
+		printk("│ Battery level:    %-44s │\n", "Waiting for valid reading");
 	}
 	else
 	{
-		printk("Battery: None\n");
+		printk("│ Battery level:    %-44s │\n", "None");
 	}
+	
 	if (remaining > 0)
 	{
 		remaining = k_ticks_to_us_floor64(remaining);
 		uint32_t hours = remaining / 3600000000;
 		remaining %= 3600000000;
 		uint8_t minutes = remaining / 60000000;
-		printk("Remaining runtime: %uh %umin\n", hours, minutes);
+		char time_str[50];
+		snprintf(time_str, sizeof(time_str), "%uh %umin", hours, minutes);
+		printk("│ Remaining time:   %-44s │\n", time_str);
 	}
 	else
 	{
-		printk("Remaining runtime: Not available\n");
+		printk("│ Remaining time:   %-44s │\n", "Not available");
 	}
+	
 	if (runtime > 0)
 	{
 		runtime = k_ticks_to_us_floor64(runtime);
 		uint32_t hours = runtime / 3600000000;
 		runtime %= 3600000000;
 		uint8_t minutes = runtime / 60000000;
-		printk("Fully charged runtime: %uh %umin\n", hours, minutes);
+		char time_str[50];
+		snprintf(time_str, sizeof(time_str), "%uh %umin", hours, minutes);
+		printk("│ Full charge time: %-44s │\n", time_str);
 	}
 	else
 	{
-		printk("Fully charged runtime: Not available\n");
+		printk("│ Full charge time: %-44s │\n", "Not available");
 	}
+	
+	printk("└────────────────────────────────────────────────────────────────┘\n");
 }
 
 static void print_info(void)
 {
 	print_board();
-	printk("\n");
 	print_sensor();
-	printk("\n");
 	print_connection();
-	printk("\n");
 	print_battery();
+	printk("\n");
 }
 
 static void print_uptime(const uint64_t ticks, const char *name)

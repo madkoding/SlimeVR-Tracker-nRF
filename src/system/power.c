@@ -53,8 +53,10 @@ K_THREAD_DEFINE(power_thread_id, 1024, power_thread, NULL, NULL, NULL, 6, 0, 0);
 
 #if DT_NODE_HAS_PROP(ZEPHYR_USER_NODE, int0_gpios)
 #define IMU_INT_EXISTS true
+static const bool imu_wakeup_available = true;
 #else
 #warning "IMU wake up GPIO does not exist"
+static const bool imu_wakeup_available = false;
 #endif
 #if DT_NODE_HAS_PROP(ZEPHYR_USER_NODE, dcdc_gpios)
 #define DCDC_EN_EXISTS true
@@ -109,6 +111,11 @@ void sys_interface_resume(void)
 	const struct device *const pm_i2c_mag = DEVICE_DT_GET(DT_PARENT(DT_NODELABEL(mag)));
 	pm_device_action_run(pm_i2c_mag, PM_DEVICE_ACTION_RESUME);
 #endif
+}
+
+bool sys_imu_wakeup_available(void)
+{
+	return imu_wakeup_available;
 }
 
 // TODO: the gpio sense is weird, maybe the device will turn back on immediately after shutdown or after (attempting to) enter WOM
