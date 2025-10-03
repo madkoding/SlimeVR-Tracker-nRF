@@ -99,6 +99,7 @@ static bool sensor_sensor_init;
 static bool sensor_sensor_scanning;
 
 static bool main_suspended;
+static bool main_wfi = false;
 
 static int consecutive_sensor_timeouts = 0;
 #define MAX_SENSOR_TIMEOUTS 20  // 1 second timeout (20 * 50ms) - balance between false positives and recovery time
@@ -179,7 +180,12 @@ const char *sensor_get_sensor_fusion_name(void)
 void sensor_scan_thread(void)
 {
 	int err;
+	bool interfaces_resumed = false;
+	
+	// Use error handling to guarantee interface suspend
 	sys_interface_resume(); // make sure interfaces are enabled
+	interfaces_resumed = true;
+	
 	err = sensor_scan(); // IMUs discovery
 	if (err)
 	{
@@ -191,7 +197,13 @@ void sensor_scan_thread(void)
 
 		err = sensor_scan(); // on POR, the sensor may not be ready yet
 	}
-	sys_interface_suspend();
+	
+	// Always suspend interfaces, even on error or abort
+	if (interfaces_resumed)
+	{
+		sys_interface_suspend();
+		interfaces_resumed = false;
+	}
 //	if (err)
 //		return err;
 }
@@ -387,10 +399,24 @@ int sensor_request_scan(bool force)
 	if (sensor_sensor_init && !force)
 		return 0; // already initialized
 	main_imu_suspend();
+	
+	// Clean up all states before aborting thread to prevent inconsistent state
+	main_running = false;
+	sensor_sensor_scanning = false;
+	main_wfi = false;
+	consecutive_sensor_timeouts = 0;
+	
+	// Try to ensure interfaces are suspended before abort
+	sys_interface_suspend();
+	
 	k_thread_abort(&sensor_thread_id); // stop the sensor thread // TODO: may need to handle fusion state
 	LOG_INF("Aborted sensor thread");
+	
+	// Reset all states after abort
 	main_suspended = false;
 	sensor_sensor_init = false;
+	main_running = false; // ensure it's false after abort
+	
 	if (force)
 	{
 		sensor_imu_dev.addr = 0x00;
@@ -487,18 +513,27 @@ void sensor_retained_write(void) // TODO: move to sys?
 void sensor_shutdown(void) // Communicate all imus to shut down
 {
 	int err = sensor_request_scan(false); // try initialization if possible
+	bool interfaces_resumed = false;
+	
 	if (mag_available || !err)
 	{
 		sys_interface_resume();
+		interfaces_resumed = true;
+		
 		if (mag_available) // try to shutdown magnetometer first (in case of passthrough)
 			sensor_mag->shutdown();
 		if (!err)
 			sensor_imu->shutdown();
-		sys_interface_suspend();
 	}
 	else
 	{
 		LOG_ERR("Failed to shutdown sensors");
+	}
+	
+	// Always suspend interfaces, even on error
+	if (interfaces_resumed)
+	{
+		sys_interface_suspend();
 	}
 }
 
@@ -548,8 +583,6 @@ static void set_update_time_ms(int time_ms)
 {
 	sensor_update_time_ms = time_ms; // TODO: terrible naming
 }
-
-bool main_wfi = false;
 
 static void sensor_interrupt_handler(const struct device *dev, struct gpio_callback *cb, uint32_t pins)
 {
@@ -711,8 +744,12 @@ void sensor_loop(void)
 {
 	if (!sensor_sensor_init)
 		return;
-	main_running = true;
+	
+	bool interfaces_resumed = false;
+	
 	sys_interface_resume(); // make sure interfaces are enabled
+	interfaces_resumed = true;
+	
 	int err = sensor_init(); // Initialize IMUs and Fusion // TODO: run as thread before loop
 	// TODO: handle imu init error, maybe restart device?
 	// TODO: on failure to init, disable sensor interface
@@ -720,8 +757,10 @@ void sensor_loop(void)
 		set_status(SYS_STATUS_SENSOR_ERROR, true); // TODO: only handles general init error
 	else
 		main_ok = true;
+	
 	while (1)
 	{
+		main_running = true; // Set at the beginning of each iteration
 		int64_t time_begin = k_uptime_get();
 		if (main_ok)
 		{
@@ -1089,7 +1128,6 @@ void sensor_loop(void)
 #endif
 		}
 
-		main_running = false;
 		int64_t time_delta = k_uptime_get() - time_begin;
 
 		if (time_delta > sensor_update_time_ms && time_delta > max_loop_time)
@@ -1173,9 +1211,19 @@ void sensor_loop(void)
 #endif
 
 		if (main_suspended) // TODO:
+		{
+			main_running = false; // Clear before suspending
 			k_thread_suspend(&sensor_thread_id);
-
-		main_running = true;
+			// When resumed, set it back
+			main_running = true;
+		}
+	}
+	
+	// Clean up when exiting loop
+	main_running = false;
+	if (interfaces_resumed)
+	{
+		sys_interface_suspend();
 	}
 }
 
@@ -1198,34 +1246,44 @@ void main_imu_suspend(void)
 {
 	main_suspended = true;
 	if (!main_running) // don't suspend if already stopped (TODO: may be called from sensor thread)
+	{
+		LOG_DBG("main_imu_suspend: already stopped, skipping");
 		return;
+	}
 	
+	LOG_DBG("main_imu_suspend: waiting for sensor scan to finish");
 	// Timeout protection for sensor scanning
 	int64_t timeout_start = k_uptime_get();
 	while (sensor_sensor_scanning)
 	{
-		if (k_uptime_get() - timeout_start > 1000) // 1s timeout
+		if (k_uptime_get() - timeout_start > 2000) // 2s timeout (increased from 1s)
 		{
-			LOG_ERR("Timeout waiting for sensor scan, forcing exit");
+			LOG_ERR("Timeout waiting for sensor scan, forcing exit (scanning=%d, init=%d)", 
+			        sensor_sensor_scanning, sensor_sensor_init);
 			sensor_sensor_scanning = false;
 			break;
 		}
-		k_usleep(1); // try not to interrupt scanning
+		k_usleep(100); // try not to interrupt scanning
 	}
 	
+	LOG_DBG("main_imu_suspend: waiting for main loop to finish iteration");
 	// Timeout protection for main loop
 	timeout_start = k_uptime_get();
 	while (main_running) // TODO: change to detect if i2c is busy
 	{
-		if (k_uptime_get() - timeout_start > 1000) // 1s timeout
+		if (k_uptime_get() - timeout_start > 2000) // 2s timeout (increased from 1s)
 		{
-			LOG_ERR("Timeout waiting for sensor thread, forcing exit");
+			LOG_ERR("Timeout waiting for sensor thread, forcing exit (running=%d, wfi=%d)", 
+			        main_running, main_wfi);
 			main_running = false;
+			// Try to ensure interfaces are suspended on timeout
+			sys_interface_suspend();
 			break;
 		}
-		k_usleep(1); // try not to interrupt anything actually
+		k_usleep(100); // try not to interrupt anything actually
 	}
 	
+	LOG_DBG("main_imu_suspend: suspending thread");
 	k_thread_suspend(&sensor_thread_id);
 	LOG_INF("Suspended sensor thread");
 }
