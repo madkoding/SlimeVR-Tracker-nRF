@@ -101,7 +101,7 @@ static bool sensor_sensor_scanning;
 static bool main_suspended;
 
 static int consecutive_sensor_timeouts = 0;
-#define MAX_SENSOR_TIMEOUTS 10
+#define MAX_SENSOR_TIMEOUTS 20  // 1 second timeout (20 * 50ms) - balance between false positives and recovery time
 
 static bool mag_available;
 #if MAG_ENABLED
@@ -1130,15 +1130,41 @@ void sensor_loop(void)
 			
 			if (consecutive_sensor_timeouts >= MAX_SENSOR_TIMEOUTS)
 			{
-				LOG_ERR("Too many consecutive sensor timeouts, triggering recovery");
+				LOG_ERR("Too many consecutive sensor timeouts, attempting safe recovery");
 				consecutive_sensor_timeouts = 0;
-				main_ok = false;
-				set_status(SYS_STATUS_SENSOR_ERROR, true);
 				
-				// Request sensor rescan to recover
-				k_msleep(100); // Give time for logging
-				sensor_request_scan(true);
-				break; // Exit loop to allow recovery
+				// Safe recovery: Re-initialize GPIO interrupt without killing the thread
+				// This preserves the thread state and fixes the most common issue
+#if IMU_INT_EXISTS
+				// Remove old callback
+				gpio_remove_callback(int0.port, &sensor_cb_data);
+				
+				// Re-configure GPIO interrupt from scratch
+				float sensor_actual_time = MIN(accel_actual_time, gyro_actual_time);
+				float sensor_fifo_threshold = 0.006f / sensor_actual_time;
+				uint8_t pin_config = sensor_imu->setup_DRDY(sensor_fifo_threshold);
+				
+				if (pin_config != 0)
+				{
+					uint32_t pull_flags = ((pin_config >> 4) == NRF_GPIO_PIN_PULLDOWN ? GPIO_PULL_DOWN : 0) | 
+					                      ((pin_config >> 4) == NRF_GPIO_PIN_PULLUP ? GPIO_PULL_UP : 0);
+					gpio_pin_configure_dt(&int0, GPIO_INPUT | pull_flags);
+					uint32_t int_flags = ((pin_config & 0xF) == NRF_GPIO_PIN_SENSE_LOW ? GPIO_INT_EDGE_FALLING : 0) | 
+					                     ((pin_config & 0xF) == NRF_GPIO_PIN_SENSE_HIGH ? GPIO_INT_EDGE_RISING : 0);
+					gpio_pin_interrupt_configure_dt(&int0, int_flags);
+					gpio_init_callback(&sensor_cb_data, sensor_interrupt_handler, BIT(int0.pin));
+					gpio_add_callback(int0.port, &sensor_cb_data);
+					
+					LOG_INF("GPIO interrupt callback successfully re-initialized");
+					set_status(SYS_STATUS_SENSOR_ERROR, false); // Clear error after successful recovery
+				}
+				else
+				{
+					LOG_ERR("Failed to re-initialize GPIO interrupt - manual reset required");
+					main_ok = false;
+					set_status(SYS_STATUS_SENSOR_ERROR, true);
+				}
+#endif
 			}
 		}
 		else
