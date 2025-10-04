@@ -581,7 +581,7 @@ void sensor_retained_write(void)  // TODO: move to sys?
 		return;
 	}
 	//	memcpy(retained->magBias, sensor_calibration_get_magBias(),
-	//sizeof(retained->magBias));
+	// sizeof(retained->magBias));
 	sensor_fusion->save(retained->fusion_data);
 	retained->fusion_id = fusion_id;
 	retained_update();
@@ -1277,7 +1277,7 @@ void sensor_loop(void) {
 						true
 					);  // TODO: should queue shutdown and suspend itself instead
 //					main_imu_suspend(); // TODO: auto suspend, the device should
-//configure WOM ASAP but it does not
+// configure WOM ASAP but it does not
 #elif CONFIG_SHUTDOWN_ON_ACTIVE_TIMEOUT && CONFIG_USER_SHUTDOWN
 					main_running
 						= false;  // skip suspend step, at the moment the thread must be
@@ -1299,7 +1299,7 @@ void sensor_loop(void) {
 						false
 					);  // TODO: should queue shutdown and suspend itself instead
 					//					main_imu_suspend(); // TODO: auto suspend, the
-					//device should configure WOM ASAP but it does not
+					// device should configure WOM ASAP but it does not
 					sensor_timeout = SENSOR_SENSOR_TIMEOUT_IMU_ELAPSED;  // only try to
 																		 // suspend once
 				}
@@ -1501,6 +1501,21 @@ void sensor_loop(void) {
 					"Too many consecutive sensor timeouts, attempting safe recovery"
 				);
 				consecutive_sensor_timeouts = 0;
+
+				// Check communication errors before attempting recovery
+				int comm_errors = ssi_get_consecutive_errors();
+				if (comm_errors > 0) {
+					LOG_WRN(
+						"Detected %d communication errors, resetting interface",
+						comm_errors
+					);
+					// Attempt bus recovery
+					sys_interface_suspend();
+					k_msleep(10);
+					sys_interface_resume();
+					ssi_reset_error_counter();
+					LOG_INF("Bus recovery attempted");
+				}
 
 				// Safe recovery: Re-initialize GPIO interrupt without killing the
 				// thread This preserves the thread state and fixes the most common
