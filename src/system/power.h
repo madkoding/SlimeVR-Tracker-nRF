@@ -1,6 +1,8 @@
 #ifndef SLIMENRF_SYSTEM_POWER
 #define SLIMENRF_SYSTEM_POWER
 
+#include <stdbool.h>
+
 void sys_interface_suspend(void);
 void sys_interface_resume(void);
 
