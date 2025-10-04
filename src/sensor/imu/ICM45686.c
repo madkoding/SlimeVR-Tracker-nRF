@@ -57,7 +57,7 @@ int icm45_init(
 			0x20
 		);  // enable external CLKIN
 		//		err |= ssi_reg_write_byte(SENSOR_INTERFACE_DEV_IMU, ICM45686_RTC_CONFIG,
-		//0x23); // enable external CLKIN (0x20, default register value is 0x03)
+		// 0x23); // enable external CLKIN (0x20, default register value is 0x03)
 	}
 	uint8_t ireg_buf[3];
 	ireg_buf[0] = ICM45686_IPREG_BAR;  // address is a word, icm is big endian
@@ -122,10 +122,11 @@ void icm45_shutdown(void) {
 	//	uint8_t ireg_buf[3];
 	//	ireg_buf[1] = ICM45686_IPREG_BAR_REG_60;
 	//	ireg_buf[2] = 0x6D & ~0x05; // set internal pull down resistors for AP pins (pin
-	//10, 7) 	err |= ssi_burst_write(SENSOR_INTERFACE_DEV_IMU, ICM45686_IREG_ADDR_15_8,
-	//ireg_buf, 3); // write buffer 	ireg_buf[1] = ICM45686_IPREG_BAR_REG_61; 	ireg_buf[2]
-	//= 0xBB & ~0x10; // set internal pull down resistors for AP pins (pin 11) 	err |=
-	//ssi_burst_write(SENSOR_INTERFACE_DEV_IMU, ICM45686_IREG_ADDR_15_8, ireg_buf, 3);
+	// 10, 7) 	err |= ssi_burst_write(SENSOR_INTERFACE_DEV_IMU,
+	// ICM45686_IREG_ADDR_15_8, ireg_buf, 3); // write buffer 	ireg_buf[1] =
+	// ICM45686_IPREG_BAR_REG_61; 	ireg_buf[2] = 0xBB & ~0x10; // set internal pull
+	//down resistors for AP pins (pin 11) 	err |=
+	// ssi_burst_write(SENSOR_INTERFACE_DEV_IMU, ICM45686_IREG_ADDR_15_8, ireg_buf, 3);
 	//// write buffer
 	if (err) {
 		LOG_ERR("Communication error");
@@ -536,7 +537,7 @@ uint8_t icm45_setup_WOM(void)  // TODO: check if working
 	//	ireg_buf[1] = ICM45686_SMC_CONTROL_0;
 	//	ireg_buf[2] = 0x60; // set ACCEL_LP_CLK_SEL to AULP
 	//	err |= ssi_burst_write(SENSOR_INTERFACE_DEV_IMU, ICM45686_IREG_ADDR_15_8,
-	//ireg_buf, 3); // write buffer
+	// ireg_buf, 3); // write buffer
 	ireg_buf[0] = ICM45686_IPREG_TOP1;
 	ireg_buf[1] = ICM45686_ACCEL_WOM_X_THR;
 	ireg_buf[2] = 0x08;  // set wake thresholds // 8 x 3.9 mg is ~31.25 mg
