@@ -36,7 +36,8 @@ int icm45_init(
 	float* gyro_actual_time
 ) {
 	// setup interface for SPI
-	if (!sensor_interface_spi_configure(SENSOR_INTERFACE_DEV_IMU, MHZ(24), 0)) {
+	// Reduced to 12MHz for better stability and reduced communication errors
+	if (!sensor_interface_spi_configure(SENSOR_INTERFACE_DEV_IMU, MHZ(12), 0)) {
 		fifo_multiplier_factor = FIFO_MULT_SPI;  // SPI mode
 	} else {
 		fifo_multiplier_factor = FIFO_MULT;  // I2C mode
