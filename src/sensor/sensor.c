@@ -839,6 +839,12 @@ static bool send_info = false;
 
 static int packet_errors = 0;
 
+// Recovery tracking for main_ok failures
+static int64_t last_recovery_attempt_time = 0;
+static int recovery_attempt_count = 0;
+#define RECOVERY_COOLDOWN_MS 5000  // Wait 5 seconds between recovery attempts
+#define MAX_RECOVERY_ATTEMPTS 3  // Try 3 times before giving up
+
 #define ACQUISITION_START_MS 1000
 #define STATUS_INTERVAL_MS 5000
 
@@ -882,6 +888,63 @@ void sensor_loop(void) {
 	while (1) {
 		main_running = true;  // Set at the beginning of each iteration
 		int64_t time_begin = k_uptime_get();
+
+		// Recovery logic when main_ok is false
+		if (!main_ok) {
+			int64_t current_time = k_uptime_get();
+
+			// Check if we should attempt recovery
+			if (current_time - last_recovery_attempt_time >= RECOVERY_COOLDOWN_MS) {
+				recovery_attempt_count++;
+				last_recovery_attempt_time = current_time;
+
+				LOG_WRN(
+					"Sensor in error state, attempting recovery #%d/%d",
+					recovery_attempt_count,
+					MAX_RECOVERY_ATTEMPTS
+				);
+
+				if (recovery_attempt_count <= MAX_RECOVERY_ATTEMPTS) {
+					// Clear error status
+					set_status(SYS_STATUS_SENSOR_ERROR, false);
+
+					// Suspend interfaces
+					sys_interface_suspend();
+					k_msleep(100);
+
+					// Try to reinitialize the sensor
+					LOG_INF("Re-initializing sensor...");
+					sys_interface_resume();
+					int err = sensor_init();
+
+					if (err == 0) {
+						LOG_INF("Sensor recovery successful!");
+						main_ok = true;
+						recovery_attempt_count = 0;
+						consecutive_sensor_timeouts = 0;
+						packet_errors = 0;
+						ssi_reset_error_counter();
+					} else {
+						LOG_ERR("Sensor recovery failed with error %d", err);
+						sys_interface_suspend();
+
+						if (recovery_attempt_count >= MAX_RECOVERY_ATTEMPTS) {
+							LOG_ERR(
+								"Maximum recovery attempts reached, requesting system "
+								"reboot"
+							);
+							sensor_retained_write();
+							sys_request_system_reboot();
+						}
+					}
+				}
+			}
+
+			// Sleep while in error state to avoid busy loop
+			k_msleep(100);
+			continue;
+		}
+
 		if (main_ok) {
 #if DEBUG
 			int64_t loop_begin = k_uptime_ticks();
@@ -909,6 +972,23 @@ void sensor_loop(void) {
 			// Read IMU temperature
 			float temp = sensor_imu->temp_read();  // TODO: use as calibration data
 			connection_update_sensor_temp(temp);
+
+			// Check for communication errors before reading - proactive recovery
+			int comm_errors = ssi_get_consecutive_errors();
+			if (comm_errors >= 10) {  // Half of MAX_COMM_ERRORS
+				LOG_WRN(
+					"Detected %d communication errors, attempting proactive recovery",
+					comm_errors
+				);
+
+				// Try a gentle recovery without disrupting the main loop
+				sys_interface_suspend();
+				k_msleep(10);
+				sys_interface_resume();
+				ssi_reset_error_counter();
+
+				LOG_INF("Proactive bus recovery completed");
+			}
 
 			// Read gyroscope (FIFO)
 			// Using static buffer instead of malloc to avoid memory fragmentation and
