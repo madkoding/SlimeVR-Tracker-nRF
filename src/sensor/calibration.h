@@ -23,27 +23,30 @@
 #ifndef SLIMENRF_SENSOR_CALIBRATION
 #define SLIMENRF_SENSOR_CALIBRATION
 
+#include <stdbool.h>
+#include <stdint.h>
+
 /* Sensor feeds data to calibration */
 void sensor_calibration_process_accel(float a[3]);
 void sensor_calibration_process_gyro(float g[3]);
 void sensor_calibration_process_mag(float m[3]);
 
 void sensor_calibration_update_sensor_ids(int imu);
-uint8_t *sensor_calibration_get_sensor_data();
+uint8_t* sensor_calibration_get_sensor_data();
 
 void sensor_calibration_read(void);
 
-int sensor_calibration_validate(float *a_bias, float *g_bias, bool write);
+int sensor_calibration_validate(float* a_bias, float* g_bias, bool write);
 #if CONFIG_SENSOR_USE_6_SIDE_CALIBRATION
 int sensor_calibration_validate_6_side(float a_inv[][3], bool write);
 #endif
 int sensor_calibration_validate_mag(float m_inv[][3], bool write);
 
-void sensor_calibration_clear(float *a_bias, float *g_bias, bool write);
+void sensor_calibration_clear(float* a_bias, float* g_bias, bool write);
 #if CONFIG_SENSOR_USE_6_SIDE_CALIBRATION
 void sensor_calibration_clear_6_side(float a_inv[][3], bool write);
 #endif
-void sensor_calibration_clear_mag(float m_inv[][3], bool write); // "request" mag cal
+void sensor_calibration_clear_mag(float m_inv[][3], bool write);  // "request" mag cal
 
 void sensor_request_calibration(void);
 void sensor_request_calibration_6_side(void);

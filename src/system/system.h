@@ -1,6 +1,10 @@
 #ifndef SLIMENRF_SYSTEM
 #define SLIMENRF_SYSTEM
 
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+
 #include "led.h"
 #include "power.h"
 #include "status.h"
@@ -14,7 +18,7 @@
 #define MAIN_ACC_6_BIAS_ID 7
 
 #define BATT_STATS_LAST_RUN_ID 8
-#define BATT_STATS_INTERVAL_0 9 // ID 9 to 28
+#define BATT_STATS_INTERVAL_0 9  // ID 9 to 28
 #define BATT_STATS_CURVE_ID 29
 
 void configure_sense_pins(void);
@@ -22,8 +26,8 @@ void configure_sense_pins(void);
 uint8_t reboot_counter_read(void);
 void reboot_counter_write(uint8_t reboot_counter);
 
-void sys_write(uint16_t id, void *ptr, const void *data, size_t len);
-void sys_read(uint16_t id, void *data, size_t len);
+void sys_write(uint16_t id, void* ptr, const void* data, size_t len);
+void sys_read(uint16_t id, void* data, size_t len);
 void sys_clear(void);
 
 int set_sensor_clock(bool enable, float rate, float* actual_rate);
