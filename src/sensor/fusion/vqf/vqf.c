@@ -20,6 +20,8 @@
 	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 	THE SOFTWARE.
 */
+#include <stdbool.h>  // Required by vqf.h for bool type
+
 #include "../src/vqf.h"  // conflicting with vqf.h in local path
 
 #include "../vqf/vqf.h"  // conflicting with vqf.h in vqf-c
