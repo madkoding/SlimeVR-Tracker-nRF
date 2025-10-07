@@ -36,6 +36,13 @@ static uint8_t sensor_data[128];  // any use sensor data
 
 static float accelBias[3] = {0}, gyroBias[3] = {0}, magBias[3] = {0};  // offset biases
 
+#define RUNTIME_GYRO_STORE_INTERVAL_MS (60000)
+#define RUNTIME_GYRO_STORE_THRESHOLD (0.05f)
+#define RUNTIME_GYRO_DELTA_EPS (0.0005f)
+
+static float runtime_gyro_pending[3] = {0};
+static int64_t runtime_gyro_last_store = 0;
+
 static float accBAinv[4][3];
 static float magBAinv[4][3];
 
@@ -69,6 +76,7 @@ static void sensor_calibrate_imu(void);
 static void sensor_calibrate_6_side(void);
 #endif
 static int sensor_calibrate_mag(void);
+static bool sensor_calibration_limit_bias(float* bias, float limit);
 
 // helpers
 static bool wait_for_motion(bool motion, int samples);
@@ -136,6 +144,98 @@ void sensor_calibration_read(void) {
 	memcpy(magBias, retained->magBias, sizeof(magBias));
 	memcpy(magBAinv, retained->magBAinv, sizeof(magBAinv));
 	memcpy(accBAinv, retained->accBAinv, sizeof(accBAinv));
+	memset(runtime_gyro_pending, 0, sizeof(runtime_gyro_pending));
+	runtime_gyro_last_store = k_uptime_get();
+}
+
+void sensor_calibration_get_gyro_bias(float bias[3]) {
+	if (bias == NULL) {
+		return;
+	}
+	memcpy(bias, gyroBias, sizeof(gyroBias));
+}
+
+static bool sensor_calibration_limit_bias(float* bias, float limit) {
+	bool changed = false;
+	for (int i = 0; i < 3; i++) {
+		if (!isfinite(bias[i])) {
+			bias[i] = 0.0f;
+			changed = true;
+			continue;
+		}
+		if (bias[i] > limit) {
+			bias[i] = limit;
+			changed = true;
+		} else if (bias[i] < -limit) {
+			bias[i] = -limit;
+			changed = true;
+		}
+	}
+	return changed;
+}
+
+bool sensor_calibration_integrate_runtime_gyro_bias(
+	const float delta[3],
+	float applied[3]
+) {
+	if (applied != NULL) {
+		for (int i = 0; i < 3; i++) {
+			applied[i] = 0.0f;
+		}
+	}
+	if (delta == NULL) {
+		return false;
+	}
+
+	float original[3];
+	memcpy(original, gyroBias, sizeof(original));
+
+	bool updated = false;
+	for (int i = 0; i < 3; i++) {
+		float addition = delta[i];
+		if (!isfinite(addition)) {
+			continue;
+		}
+		if (fabsf(addition) < RUNTIME_GYRO_DELTA_EPS) {
+			continue;
+		}
+		gyroBias[i] += addition;
+		updated = true;
+	}
+
+	if (!updated) {
+		return false;
+	}
+
+	bool limited = sensor_calibration_limit_bias(gyroBias, 50.0f);
+
+	for (int i = 0; i < 3; i++) {
+		float diff = gyroBias[i] - original[i];
+		runtime_gyro_pending[i] += diff;
+		if (applied != NULL) {
+			applied[i] = diff;
+		}
+	}
+
+	if (limited) {
+		LOG_WRN("Runtime gyro bias limited to safe bounds");
+	}
+
+	float pending_max = fmaxf(
+		fabsf(runtime_gyro_pending[0]),
+		fmaxf(fabsf(runtime_gyro_pending[1]), fabsf(runtime_gyro_pending[2]))
+	);
+	int64_t now = k_uptime_get();
+	if (pending_max >= RUNTIME_GYRO_STORE_THRESHOLD
+		|| now - runtime_gyro_last_store >= RUNTIME_GYRO_STORE_INTERVAL_MS) {
+		memcpy(retained->gyroBias, gyroBias, sizeof(gyroBias));
+		sys_write(MAIN_GYRO_BIAS_ID, &retained->gyroBias, gyroBias, sizeof(gyroBias));
+		memset(runtime_gyro_pending, 0, sizeof(runtime_gyro_pending));
+		runtime_gyro_last_store = now;
+		LOG_INF("Persisted runtime gyro bias adjustment");
+	}
+
+	return true;
 }
 
 int sensor_calibration_validate(float* a_bias, float* g_bias, bool write) {
@@ -146,9 +246,47 @@ int sensor_calibration_validate(float* a_bias, float* g_bias, bool write) {
 		g_bias = gyroBias;
 	}
 	float zero[3] = {0};
-	if (!v_epsilon(a_bias, zero, 0.5)
-		|| !v_epsilon(g_bias, zero, 50.0))  // check accel is <0.5G and gyro <50dps
-	{
+	bool accel_valid = v_epsilon(a_bias, zero, 0.5);
+	bool gyro_valid = v_epsilon(g_bias, zero, 50.0);
+
+	if (!accel_valid || !gyro_valid) {
+		if (write) {
+			bool accel_updated = false;
+			bool gyro_updated = false;
+			if (!accel_valid) {
+				accel_updated = sensor_calibration_limit_bias(a_bias, 0.5f);
+				if (accel_updated) {
+					LOG_WRN("Stored accelerometer bias out of range, clamping");
+				}
+			}
+			if (!gyro_valid) {
+				gyro_updated = sensor_calibration_limit_bias(g_bias, 50.0f);
+				if (gyro_updated) {
+					LOG_WRN("Stored gyroscope bias out of range, clamping");
+				}
+			}
+			if (accel_updated || gyro_updated) {
+				LOG_WRN("Keeping previous calibration after limiting to safe bounds");
+				if (accel_updated) {
+					sys_write(
+						MAIN_ACCEL_BIAS_ID,
+						&retained->accelBias,
+						accelBias,
+						sizeof(accelBias)
+					);
+				}
+				if (gyro_updated) {
+					sys_write(
+						MAIN_GYRO_BIAS_ID,
+						&retained->gyroBias,
+						gyroBias,
+						sizeof(gyroBias)
+					);
+				}
+				return 0;
+			}
+		}
+
 		sensor_calibration_clear(a_bias, g_bias, write);
 		LOG_WRN("Invalidated calibration");
 		LOG_WRN("The IMU may be damaged or calibration was not completed properly");

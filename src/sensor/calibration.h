@@ -36,7 +36,13 @@ uint8_t* sensor_calibration_get_sensor_data();
 
 void sensor_calibration_read(void);
 
+void sensor_calibration_get_gyro_bias(float bias[3]);
+
 int sensor_calibration_validate(float* a_bias, float* g_bias, bool write);
+bool sensor_calibration_integrate_runtime_gyro_bias(
+	const float delta[3],
+	float applied[3]
+);
 #if CONFIG_SENSOR_USE_6_SIDE_CALIBRATION
 int sensor_calibration_validate_6_side(float a_inv[][3], bool write);
 #endif

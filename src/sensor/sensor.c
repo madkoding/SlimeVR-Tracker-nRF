@@ -934,6 +934,46 @@ void sensor_loop(void)
 					LOG_INF("No motion from sensors in %dms", CONFIG_SENSOR_LP_TIMEOUT);
 					sensor_mode = SENSOR_SENSOR_MODE_LOW_POWER;
 				}
+#if CONFIG_SENSOR_USE_VQF
+				static int64_t runtime_bias_rest_start;
+				static int64_t runtime_bias_last_harvest;
+				const int64_t runtime_bias_min_rest_ms = 2500;
+				const int64_t runtime_bias_harvest_interval_ms = 500;
+				if (vqf_get_rest_detected())
+				{
+					int64_t now = k_uptime_get();
+					if (runtime_bias_rest_start == 0)
+						runtime_bias_rest_start = now;
+					if (now - runtime_bias_rest_start >= runtime_bias_min_rest_ms
+					    && (runtime_bias_last_harvest == 0
+					        || now - runtime_bias_last_harvest >= runtime_bias_harvest_interval_ms))
+					{
+						float fusion_bias[3] = {0};
+						float stored_bias[3] = {0};
+						sensor_fusion->get_gyro_bias(fusion_bias);
+						sensor_calibration_get_gyro_bias(stored_bias);
+						float delta[3] = {0};
+						bool significant = false;
+						for (int i = 0; i < 3; i++)
+						{
+							delta[i] = fusion_bias[i] - stored_bias[i];
+							if (fabsf(delta[i]) > 0.0005f)
+								significant = true;
+						}
+						if (significant)
+						{
+							float applied[3] = {0};
+							if (sensor_calibration_integrate_runtime_gyro_bias(delta, applied))
+								LOG_DBG("Runtime gyro zero updated: %.5f %.5f %.5f", (double)applied[0], (double)applied[1], (double)applied[2]);
+						}
+						runtime_bias_last_harvest = now;
+					}
+				}
+				else
+				{
+					runtime_bias_rest_start = 0;
+				}
+#endif
 #if CONFIG_SENSOR_USE_LOW_POWER_2 || CONFIG_USE_IMU_TIMEOUT
 				int64_t imu_timeout = CLAMP(last_data_time - last_suspend_attempt_time, CONFIG_IMU_TIMEOUT_RAMP_MIN, CONFIG_IMU_TIMEOUT_RAMP_MAX); // Ramp timeout from last_data_time
 #endif
