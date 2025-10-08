@@ -20,15 +20,16 @@
 	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 	THE SOFTWARE.
 */
+// clang-format off
+#include <stdbool.h>
 #include "../src/vqf.h"  // conflicting with vqf.h in local path
-
 #include <math.h>
-
 #include "../vqf/vqf.h"  // conflicting with vqf.h in vqf-c
 #include "globals.h"
 #include "sensor/calibration.h"
 #include "sensor/sensors_enum.h"
 #include "util.h"
+// clang-format on
 
 #ifndef DEG_TO_RAD
 #define DEG_TO_RAD (M_PI / 180.0f)
@@ -63,33 +64,26 @@ static void set_params() {
 	params.restThAcc = 1.418598f;
 	params.restThGyr = 1.399189f;
 #else
+	float clip = 1.5f;  // rad/s
 	const float* stored_bias = sensor_calibration_get_gyro_bias();
-	float bias_floor = 0.0f;
 	if (stored_bias != NULL) {
 		for (int i = 0; i < 3; i++) {
-			float component = fabsf(stored_bias[i]);
-			if (component > bias_floor) {
-				bias_floor = component;
-			}
+			float component = fabsf(stored_bias[i]) * DEG_TO_RAD;
+			clip = fmaxf(clip, component + (5.0f * DEG_TO_RAD));
 		}
 	}
 
-	float clip = bias_floor + 0.5f;
-	if (clip < 1.5f) {
-		clip = 1.5f;
-	}
-
 	params.biasClip = clip;
-	params.biasForgettingTime
-		= 900.0f;  // trust stored zero bias and relax runtime forgetting
-	params.biasSigmaInit = 0.6f;
-	params.biasSigmaMotion = 0.12f;
-	params.biasSigmaRest = 0.04f;
-	params.biasVerticalForgettingFactor = 0.003f;
-	params.restFilterTau = 1.2f;
-	params.restMinT = 2.5f;
-	params.restThAcc = 1.8f;
-	params.restThGyr = 1.0f + bias_floor;
+	// Trust the persisted zero calibration by slowing down bias forgetting
+	params.biasForgettingTime = 600.0f;
+	params.biasSigmaInit = 2.0f;
+	params.biasSigmaMotion = 0.25f;
+	params.biasSigmaRest = 0.05f;
+	params.biasVerticalForgettingFactor = 0.005f;
+	params.restFilterTau = 1.25f;
+	params.restMinT = 3.0f;
+	params.restThAcc = 1.5f;
+	params.restThGyr = 1.2f;
 #endif
 }
 
