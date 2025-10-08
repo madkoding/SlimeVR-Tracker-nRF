@@ -33,6 +33,8 @@ void sensor_calibration_process_mag(float m[3]);
 
 void sensor_calibration_update_sensor_ids(int imu);
 uint8_t* sensor_calibration_get_sensor_data();
+const float* sensor_calibration_get_accel_bias(void);
+const float* sensor_calibration_get_gyro_bias(void);
 
 void sensor_calibration_read(void);
 

@@ -130,6 +130,10 @@ void sensor_calibration_update_sensor_ids(int imu) { imu_id = imu; }
 
 uint8_t* sensor_calibration_get_sensor_data() { return sensor_data; }
 
+const float* sensor_calibration_get_accel_bias(void) { return accelBias; }
+
+const float* sensor_calibration_get_gyro_bias(void) { return gyroBias; }
+
 void sensor_calibration_read(void) {
 	memcpy(sensor_data, retained->sensor_data, sizeof(sensor_data));
 	memcpy(accelBias, retained->accelBias, sizeof(accelBias));
