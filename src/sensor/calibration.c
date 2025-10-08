@@ -36,13 +36,6 @@ static uint8_t sensor_data[128];  // any use sensor data
 
 static float accelBias[3] = {0}, gyroBias[3] = {0}, magBias[3] = {0};  // offset biases
 
-#define RUNTIME_GYRO_STORE_INTERVAL_MS (60000)
-#define RUNTIME_GYRO_STORE_THRESHOLD (0.05f)
-#define RUNTIME_GYRO_DELTA_EPS (0.0005f)
-
-static float runtime_gyro_pending[3] = {0};
-static int64_t runtime_gyro_last_store = 0;
-
 static float accBAinv[4][3];
 static float magBAinv[4][3];
 
@@ -144,15 +137,6 @@ void sensor_calibration_read(void) {
 	memcpy(magBias, retained->magBias, sizeof(magBias));
 	memcpy(magBAinv, retained->magBAinv, sizeof(magBAinv));
 	memcpy(accBAinv, retained->accBAinv, sizeof(accBAinv));
-	memset(runtime_gyro_pending, 0, sizeof(runtime_gyro_pending));
-	runtime_gyro_last_store = k_uptime_get();
-}
-
-void sensor_calibration_get_gyro_bias(float bias[3]) {
-	if (bias == NULL) {
-		return;
-	}
-	memcpy(bias, gyroBias, sizeof(gyroBias));
 }
 
 static bool sensor_calibration_limit_bias(float* bias, float limit) {
@@ -172,70 +156,6 @@ static bool sensor_calibration_limit_bias(float* bias, float limit) {
 		}
 	}
 	return changed;
-}
-
-bool sensor_calibration_integrate_runtime_gyro_bias(
-	const float delta[3],
-	float applied[3]
-) {
-	if (applied != NULL) {
-		for (int i = 0; i < 3; i++) {
-			applied[i] = 0.0f;
-		}
-	}
-	if (delta == NULL) {
-		return false;
-	}
-
-	float original[3];
-	memcpy(original, gyroBias, sizeof(original));
-
-	bool updated = false;
-	for (int i = 0; i < 3; i++) {
-		float addition = delta[i];
-		if (!isfinite(addition)) {
-			continue;
-		}
-		if (fabsf(addition) < RUNTIME_GYRO_DELTA_EPS) {
-			continue;
-		}
-		gyroBias[i] += addition;
-		updated = true;
-	}
-
-	if (!updated) {
-		return false;
-	}
-
-	bool limited = sensor_calibration_limit_bias(gyroBias, 50.0f);
-
-	for (int i = 0; i < 3; i++) {
-		float diff = gyroBias[i] - original[i];
-		runtime_gyro_pending[i] += diff;
-		if (applied != NULL) {
-			applied[i] = diff;
-		}
-	}
-
-	if (limited) {
-		LOG_WRN("Runtime gyro bias limited to safe bounds");
-	}
-
-	float pending_max = fmaxf(
-		fabsf(runtime_gyro_pending[0]),
-		fmaxf(fabsf(runtime_gyro_pending[1]), fabsf(runtime_gyro_pending[2]))
-	);
-	int64_t now = k_uptime_get();
-	if (pending_max >= RUNTIME_GYRO_STORE_THRESHOLD
-		|| now - runtime_gyro_last_store >= RUNTIME_GYRO_STORE_INTERVAL_MS) {
-		memcpy(retained->gyroBias, gyroBias, sizeof(gyroBias));
-		sys_write(MAIN_GYRO_BIAS_ID, &retained->gyroBias, gyroBias, sizeof(gyroBias));
-		memset(runtime_gyro_pending, 0, sizeof(runtime_gyro_pending));
-		runtime_gyro_last_store = now;
-		LOG_INF("Persisted runtime gyro bias adjustment");
-	}
-
-	return true;
 }
 
 int sensor_calibration_validate(float* a_bias, float* g_bias, bool write) {
