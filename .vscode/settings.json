@@ -3,5 +3,42 @@
         "*.h": "c"
     },
     "nrf-connect.toolchain.path": "${nrf-connect.toolchain:2.9.0}",
-    "nrf-connect.topdir": "${nrf-connect.sdk:2.9.0}"
+    "nrf-connect.topdir": "${nrf-connect.sdk:2.9.0}",
+    // Desactiva el formateo automático al guardar para evitar cambios no deseados
+    "editor.formatOnSave": false,
+    "editor.formatOnPaste": false,
+    "editor.formatOnType": false,
+    // Usa las configuraciones de EditorConfig
+    "editorconfig.enable": true,
+    // Preserva espacios/tabs existentes
+    "files.trimTrailingWhitespace": false,
+    "files.insertFinalNewline": true,
+    // Configuración específica para C/C++
+    "[c]": {
+        "editor.formatOnSave": false,
+        "editor.tabSize": 8,
+        "editor.insertSpaces": false,
+        "editor.detectIndentation": true
+    },
+    "[cpp]": {
+        "editor.formatOnSave": false,
+        "editor.tabSize": 8,
+        "editor.insertSpaces": false,
+        "editor.detectIndentation": true
+    },
+    "[h]": {
+        "editor.formatOnSave": false,
+        "editor.tabSize": 8,
+        "editor.insertSpaces": false,
+        "editor.detectIndentation": true
+    },
+    // Configuración para otros tipos de archivo
+    "[yaml]": {
+        "editor.tabSize": 2,
+        "editor.insertSpaces": true
+    },
+    "[cmake]": {
+        "editor.tabSize": 2,
+        "editor.insertSpaces": true
+    }
 }
