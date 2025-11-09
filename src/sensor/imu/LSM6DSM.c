@@ -352,8 +352,16 @@ int lsm6dsm_fifo_process(uint16_t index, uint8_t *data, float a[3], float g[3])
 	return 1;
 }
 
+/* LSM6DSM does not have COUNTER_BDR, FIFO threshold uses word count, or 3 words per sensor sample
+ * ex. if gyro odr is higher, and pattern length is 3:
+ * first timestamp will have both gyro and accel
+ * second (and above) timestamp will contain only gyro for the rest of the pattern length
+ * 0->(0+0)*3, 1->(1+1)*3, 2->(1+2)*3, 3->(1+3)*3, 4->(2+4)*3
+ * this assumes pattern always begins at 0 on fifo read, which it will not.
+ */
 uint8_t lsm6dsm_setup_DRDY(uint16_t threshold)
 {
+	threshold = ((threshold + fifo_pattern_length - 1) / fifo_pattern_length + threshold) * 3;
 	uint8_t buf[2];
 	buf[0] = threshold & 0xFF;
 	buf[1] = (threshold >> 8) & 0x07;

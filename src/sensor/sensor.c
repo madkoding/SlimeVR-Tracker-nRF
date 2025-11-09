@@ -139,7 +139,14 @@ static void sensor_loop(void);
 static struct k_thread sensor_thread_id;
 static K_THREAD_STACK_DEFINE(sensor_thread_id_stack, 1024);
 
-K_THREAD_DEFINE(sensor_init_thread_id, 256, sensor_request_scan, true, NULL, NULL, 7, 0, 0);
+K_THREAD_DEFINE(sensor_init_thread_id, 256, sensor_request_scan, true, NULL, NULL, SENSOR_REQUEST_SCAN_THREAD_PRIORITY, 0, 0);
+//crashing on nrf54l at 256
+
+/* init thread handles starting scanner on the main thread, and then switches to the loop, before returning
+   afterwards, other calls to start scanner will stop the loop on their thread and start the scanner on its own; it will also wait for the scanner to finish
+   if the loop needs to handle power off, it should start another thread or otherwise offload the call so it does not try to kill itself
+   in this case, it is appropriate to queue the request to power thread
+*/
 
 #define ZEPHYR_USER_NODE DT_PATH(zephyr_user)
 
@@ -382,11 +389,11 @@ int sensor_request_scan(bool force)
 		sensor_mag_dev_reg = 0xFF;
 		LOG_INF("Requested sensor scan");
 	}
-	k_thread_create(&sensor_thread_id, sensor_thread_id_stack, K_THREAD_STACK_SIZEOF(sensor_thread_id_stack), (k_thread_entry_t)sensor_scan_thread, NULL, NULL, NULL, 7, 0, K_NO_WAIT);
+	k_thread_create(&sensor_thread_id, sensor_thread_id_stack, K_THREAD_STACK_SIZEOF(sensor_thread_id_stack), (k_thread_entry_t)sensor_scan_thread, NULL, NULL, NULL, SENSOR_SCAN_THREAD_PRIORITY, 0, K_NO_WAIT);
 	k_thread_join(&sensor_thread_id, K_FOREVER); // wait for the thread to finish
 	if (sensor_sensor_init && force)
 	{		
-		k_thread_create(&sensor_thread_id, sensor_thread_id_stack, K_THREAD_STACK_SIZEOF(sensor_thread_id_stack), (k_thread_entry_t)sensor_loop, NULL, NULL, NULL, 7, 0, K_NO_WAIT);
+		k_thread_create(&sensor_thread_id, sensor_thread_id_stack, K_THREAD_STACK_SIZEOF(sensor_thread_id_stack), (k_thread_entry_t)sensor_loop, NULL, NULL, NULL, SENSOR_LOOP_THREAD_PRIORITY, K_FP_REGS, K_NO_WAIT);
 		LOG_INF("Started sensor loop");
 	}
 	return !sensor_sensor_init;
@@ -536,9 +543,95 @@ static void sensor_interrupt_handler(const struct device *dev, struct gpio_callb
 		main_wfi = false;
 		k_wakeup(&sensor_thread_id);
 	}
+	else
+	{
+		// need to signal to catch up thread
+		main_wfi = true;
+	}
 }
 
 static struct gpio_callback sensor_cb_data;
+
+enum sensor_sensor_mode {
+//	SENSOR_SENSOR_MODE_OFF,
+	SENSOR_SENSOR_MODE_LOW_NOISE,
+	SENSOR_SENSOR_MODE_LOW_POWER,
+	SENSOR_SENSOR_MODE_LOW_POWER_2
+};
+
+static enum sensor_sensor_mode sensor_mode = SENSOR_SENSOR_MODE_LOW_NOISE;
+static enum sensor_sensor_mode last_sensor_mode = SENSOR_SENSOR_MODE_LOW_NOISE;
+
+enum sensor_sensor_timeout {
+	SENSOR_SENSOR_TIMEOUT_IMU,
+	SENSOR_SENSOR_TIMEOUT_IMU_ELAPSED,
+	SENSOR_SENSOR_TIMEOUT_ACTIVITY,
+	SENSOR_SENSOR_TIMEOUT_ACTIVITY_ELAPSED,
+};
+
+static enum sensor_sensor_timeout sensor_timeout = SENSOR_SENSOR_TIMEOUT_IMU;
+
+// Check the IMU gyroscope // TODO: gyro sanity not used
+ // TODO: timeouts and power management should be outside sensor! (ie. sleeping/shutdown even if the imu completely errored out)
+ // all this really means is that this should be called in sensor loop while the sensor is in an error state
+static void sensor_update_sensor_state(void)
+{
+	bool calibrating = get_status(SYS_STATUS_CALIBRATION_RUNNING);
+	bool resting = sensor_fusion->get_gyro_sanity() == 0 ? q_epsilon(q, last_q, 0.005) : q_epsilon(q, last_q, 0.05); // TODO: Probably okay to use the constantly updating last_q?
+	if (!calibrating && resting)
+	{
+		int64_t last_data_delta = k_uptime_get() - last_data_time;
+		if (sensor_mode < SENSOR_SENSOR_MODE_LOW_POWER && last_data_delta > CONFIG_SENSOR_LP_TIMEOUT) // No motion in lp timeout
+		{
+			LOG_INF("No motion from sensors in %dms", CONFIG_SENSOR_LP_TIMEOUT);
+			sensor_mode = SENSOR_SENSOR_MODE_LOW_POWER;
+		}
+#if CONFIG_SENSOR_USE_LOW_POWER_2 || CONFIG_USE_IMU_TIMEOUT
+		int64_t imu_timeout = CLAMP(last_data_time - last_suspend_attempt_time, CONFIG_IMU_TIMEOUT_RAMP_MIN, CONFIG_IMU_TIMEOUT_RAMP_MAX); // Ramp timeout from last_data_time
+#endif
+#if CONFIG_SENSOR_USE_LOW_POWER_2
+		if (sensor_mode < SENSOR_SENSOR_MODE_LOW_POWER_2 && last_data_delta > imu_timeout) // No motion in ramp time
+			sensor_mode = SENSOR_SENSOR_MODE_LOW_POWER_2;
+#endif
+#if CONFIG_USE_ACTIVE_TIMEOUT
+		if (sensor_timeout < SENSOR_SENSOR_TIMEOUT_ACTIVITY && last_data_delta > CONFIG_ACTIVE_TIMEOUT_THRESHOLD) // higher priority than IMU timeout
+		{
+			LOG_INF("Switching to activity timeout");
+			sensor_timeout = SENSOR_SENSOR_TIMEOUT_ACTIVITY;
+		}
+		if (sensor_timeout == SENSOR_SENSOR_TIMEOUT_ACTIVITY && last_data_delta > CONFIG_ACTIVE_TIMEOUT_DELAY)
+		{
+			LOG_INF("No motion from sensors in %dm", CONFIG_ACTIVE_TIMEOUT_DELAY / 60000);
+#if CONFIG_SLEEP_ON_ACTIVE_TIMEOUT && CONFIG_USE_IMU_WAKE_UP
+			// Queue power state request, it is possible for the request to be overridden so the thread may continue unaware
+			sys_request_WOM(true, false);
+#elif CONFIG_SHUTDOWN_ON_ACTIVE_TIMEOUT && CONFIG_USER_SHUTDOWN
+			// Queue power state request, thread will be suspended when entering system_off
+			sys_request_system_off(false);
+#endif
+			sensor_timeout = SENSOR_SENSOR_TIMEOUT_ACTIVITY_ELAPSED; // only try to suspend once
+		}
+#endif
+#if CONFIG_USE_IMU_TIMEOUT && CONFIG_USE_IMU_WAKE_UP
+		if (sensor_timeout == SENSOR_SENSOR_TIMEOUT_IMU && last_data_delta > imu_timeout) // No motion in ramp time
+		{
+			LOG_INF("No motion from sensors in %llds", imu_timeout / 1000);
+			// Queue power state request
+			sys_request_WOM(false, false);
+			sensor_timeout = SENSOR_SENSOR_TIMEOUT_IMU_ELAPSED; // only try to suspend once
+		}
+#endif
+	}
+	else
+	{
+		if (sensor_mode == SENSOR_SENSOR_MODE_LOW_POWER_2 || sensor_timeout == SENSOR_SENSOR_TIMEOUT_IMU_ELAPSED)
+			last_suspend_attempt_time = k_uptime_get();
+		last_data_time = k_uptime_get();
+		if (sensor_timeout == SENSOR_SENSOR_TIMEOUT_IMU_ELAPSED) // Resetting IMU timeout
+			sensor_timeout = SENSOR_SENSOR_TIMEOUT_IMU;
+		sensor_mode = SENSOR_SENSOR_MODE_LOW_NOISE;
+	}
+}
 
 int sensor_init(void)
 {
@@ -644,25 +737,6 @@ int sensor_init(void)
 	return 0;
 }
 
-enum sensor_sensor_mode {
-//	SENSOR_SENSOR_MODE_OFF,
-	SENSOR_SENSOR_MODE_LOW_NOISE,
-	SENSOR_SENSOR_MODE_LOW_POWER,
-	SENSOR_SENSOR_MODE_LOW_POWER_2
-};
-
-static enum sensor_sensor_mode sensor_mode = SENSOR_SENSOR_MODE_LOW_NOISE;
-static enum sensor_sensor_mode last_sensor_mode = SENSOR_SENSOR_MODE_LOW_NOISE;
-
-enum sensor_sensor_timeout {
-	SENSOR_SENSOR_TIMEOUT_IMU,
-	SENSOR_SENSOR_TIMEOUT_IMU_ELAPSED,
-	SENSOR_SENSOR_TIMEOUT_ACTIVITY,
-	SENSOR_SENSOR_TIMEOUT_ACTIVITY_ELAPSED,
-};
-
-static enum sensor_sensor_timeout sensor_timeout = SENSOR_SENSOR_TIMEOUT_IMU;
-
 static bool main_ok = false;
 
 static int packet_errors = 0;
@@ -767,6 +841,7 @@ void sensor_loop(void)
 			if (reconfig) // TODO: get rid of reconfig?
 			{
 				// Changing FIFO threshold here should be fine since FIFO is empty now
+				// TODO: causing warnings since packet processing and loop timing still expects previous update_time
 				switch (sensor_mode)
 				{
 				case SENSOR_SENSOR_MODE_LOW_NOISE:
@@ -788,11 +863,12 @@ void sensor_loop(void)
 			sys_interface_suspend();
 
 			// Fuse all data
+			int g_count = 0;
 			float a_sum[3] = {0};
 			int a_count = 0;
 			max_gyro_speed_square = 0;
 			int processed_packets = 0;
-			for (uint16_t i = 0; i < packets; i++) // TODO: fifo_process_ext is available, need to implement it
+			for (uint16_t i = 0; i < packets; i++)
 			{
 				float raw_a[3] = {0};
 				float raw_g[3] = {0};
@@ -814,6 +890,8 @@ void sensor_loop(void)
 
 					// Process fusion
 					sensor_fusion->update_gyro(g, gyro_actual_time);
+
+					g_count++;
 
 					if (mag_available && mag_enabled)
 					{
@@ -852,6 +930,9 @@ void sensor_loop(void)
 
 				processed_packets++;
 			}
+
+			// If sensors have asymmetric packets in FIFO, timesteps will not match packet count
+			int processed_timesteps = MAX(g_count, a_count);
 
 			// Free the FIFO buffer
 			k_free(rawData);
@@ -908,7 +989,7 @@ void sensor_loop(void)
 					if (packets)
 					{
 						sensor_retained_write(); // keep the fusion state
-						sys_request_system_reboot();
+						sys_request_system_reboot(false);
 					}
 				}
 			}
@@ -917,9 +998,9 @@ void sensor_loop(void)
 				packet_errors = 0;
 			}
 
-			// Also check if expected number of packets when using FIFO threshold
-			if (processed_packets && processed_packets != sensor_fifo_threshold)
-				LOG_WRN("Expected %d packets, processed %d", sensor_fifo_threshold, processed_packets);
+			// Also check if expected number of timesteps when using FIFO threshold
+			if (processed_timesteps && processed_timesteps != sensor_fifo_threshold)
+				LOG_WRN("Expected %d timestep%s, got %d", sensor_fifo_threshold, sensor_fifo_threshold == 1 ? "" : "s", processed_timesteps);
 
 			// Update fusion gyro sanity? // TODO: use to detect drift and correct or suspend tracking
 //			sensor_fusion->update_gyro_sanity(g, m);
@@ -928,74 +1009,12 @@ void sensor_loop(void)
 			sensor_fusion->get_quat(q);
 			q_normalize(q, q); // safe to use self as output
 
-			// Get linear acceleration // TODO: move to util functions
+			// Get linear acceleration
 			float lin_a[3] = {0};
 			if (v_diff_mag(a, lin_a) != 0) // lin_a as zero vector
-			{
-				float vec_gravity[3] = {0};
-				vec_gravity[0] = 2.0f * (q[1] * q[3] - q[0] * q[2]);
-				vec_gravity[1] = 2.0f * (q[2] * q[3] + q[0] * q[1]);
-				vec_gravity[2] = 2.0f * (q[0] * q[0] - 0.5f + q[3] * q[3]);
-				for (int i = 0; i < 3; i++)
-					lin_a[i] = (a[i] - vec_gravity[i]) * CONST_EARTH_GRAVITY; // vector to m/s^2
-			}
+				a_to_lin_a(q, a, lin_a);
 
-			// Check the IMU gyroscope // TODO: gyro sanity not used // TODO: timeouts and power management should be outside sensor! (ie. sleeping/shutdown even if the imu completely errored out)
-			bool calibrating = get_status(SYS_STATUS_CALIBRATION_RUNNING);
-			bool resting = sensor_fusion->get_gyro_sanity() == 0 ? q_epsilon(q, last_q, 0.005) : q_epsilon(q, last_q, 0.05); // TODO: Probably okay to use the constantly updating last_q?
-			if (!calibrating && resting)
-			{
-				int64_t last_data_delta = k_uptime_get() - last_data_time;
-				if (sensor_mode < SENSOR_SENSOR_MODE_LOW_POWER && last_data_delta > CONFIG_SENSOR_LP_TIMEOUT) // No motion in lp timeout
-				{
-					LOG_INF("No motion from sensors in %dms", CONFIG_SENSOR_LP_TIMEOUT);
-					sensor_mode = SENSOR_SENSOR_MODE_LOW_POWER;
-				}
-#if CONFIG_SENSOR_USE_LOW_POWER_2 || CONFIG_USE_IMU_TIMEOUT
-				int64_t imu_timeout = CLAMP(last_data_time - last_suspend_attempt_time, CONFIG_IMU_TIMEOUT_RAMP_MIN, CONFIG_IMU_TIMEOUT_RAMP_MAX); // Ramp timeout from last_data_time
-#endif
-#if CONFIG_SENSOR_USE_LOW_POWER_2
-				if (sensor_mode < SENSOR_SENSOR_MODE_LOW_POWER_2 && last_data_delta > imu_timeout) // No motion in ramp time
-					sensor_mode = SENSOR_SENSOR_MODE_LOW_POWER_2;
-#endif
-#if CONFIG_USE_ACTIVE_TIMEOUT
-				if (sensor_timeout < SENSOR_SENSOR_TIMEOUT_ACTIVITY && last_data_delta > CONFIG_ACTIVE_TIMEOUT_THRESHOLD) // higher priority than IMU timeout
-				{
-					LOG_INF("Switching to activity timeout");
-					sensor_timeout = SENSOR_SENSOR_TIMEOUT_ACTIVITY;
-				}
-				if (sensor_timeout == SENSOR_SENSOR_TIMEOUT_ACTIVITY && last_data_delta > CONFIG_ACTIVE_TIMEOUT_DELAY)
-				{
-					LOG_INF("No motion from sensors in %dm", CONFIG_ACTIVE_TIMEOUT_DELAY / 60000);
-#if CONFIG_SLEEP_ON_ACTIVE_TIMEOUT && CONFIG_USE_IMU_WAKE_UP
-					sys_request_WOM(true); // TODO: should queue shutdown and suspend itself instead
-//					main_imu_suspend(); // TODO: auto suspend, the device should configure WOM ASAP but it does not
-#elif CONFIG_SHUTDOWN_ON_ACTIVE_TIMEOUT && CONFIG_USER_SHUTDOWN
-					main_running = false; // skip suspend step, at the moment the thread must be running to shutdown // TODO: should queue shutdown and suspend itself instead
-					sys_request_system_off();
-#endif
-					sensor_timeout = SENSOR_SENSOR_TIMEOUT_ACTIVITY_ELAPSED; // only try to suspend once
-				}
-#endif
-#if CONFIG_USE_IMU_TIMEOUT && CONFIG_USE_IMU_WAKE_UP
-				if (sensor_timeout == SENSOR_SENSOR_TIMEOUT_IMU && last_data_delta > imu_timeout) // No motion in ramp time
-				{
-					LOG_INF("No motion from sensors in %llds", imu_timeout / 1000);
-					sys_request_WOM(false); // TODO: should queue shutdown and suspend itself instead
-//					main_imu_suspend(); // TODO: auto suspend, the device should configure WOM ASAP but it does not
-					sensor_timeout = SENSOR_SENSOR_TIMEOUT_IMU_ELAPSED; // only try to suspend once
-				}
-#endif
-			}
-			else
-			{
-				if (sensor_mode == SENSOR_SENSOR_MODE_LOW_POWER_2 || sensor_timeout == SENSOR_SENSOR_TIMEOUT_IMU_ELAPSED)
-					last_suspend_attempt_time = k_uptime_get();
-				last_data_time = k_uptime_get();
-				if (sensor_timeout == SENSOR_SENSOR_TIMEOUT_IMU_ELAPSED) // Resetting IMU timeout
-					sensor_timeout = SENSOR_SENSOR_TIMEOUT_IMU;
-				sensor_mode = SENSOR_SENSOR_MODE_LOW_NOISE;
-			}
+			sensor_update_sensor_state();
 
 			// Update magnetometer mode
 			if (mag_available && mag_enabled)
@@ -1083,11 +1102,20 @@ void sensor_loop(void)
 
 #if IMU_INT_EXISTS
 		sensor_data_time = 0; // reset data time
-		main_wfi = true; // TODO: this is terrible
-		k_msleep(sensor_update_time_ms + 10); // will be resumed by interrupt // TODO: dont use hard timeout
-		if (main_wfi) // timeout
+		if (!main_wfi)
 		{
-			LOG_WRN("Sensor interrupt timeout");
+			main_wfi = true; // TODO: this is terrible
+			k_msleep(sensor_update_time_ms + 10); // will be resumed by interrupt // TODO: dont use hard timeout
+			if (main_wfi) // timeout
+			{
+				LOG_WRN("Sensor interrupt timeout");
+				main_wfi = false;
+			}
+		}
+		else // if signal was sent during processing, loop immediately to catch up
+		{
+			LOG_INF("FIFO THS/WM/WTM triggered during loop");
+			k_yield();
 			main_wfi = false;
 		}
 #else

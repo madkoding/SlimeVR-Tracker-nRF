@@ -43,11 +43,17 @@ static bool device_plugged = false;
 
 LOG_MODULE_REGISTER(power, LOG_LEVEL_INF);
 
+static void sys_WOM(bool force);
+static void sys_system_off(void);
+static void sys_system_reboot(void);
+
+static int sys_power_state_request(int id);
+
 static void disable_DFU_thread(void);
-K_THREAD_DEFINE(disable_DFU_thread_id, 128, disable_DFU_thread, NULL, NULL, NULL, 6, 0, 500); // disable DFU if the system is running correctly
+K_THREAD_DEFINE(disable_DFU_thread_id, 128, disable_DFU_thread, NULL, NULL, NULL, DISABLE_DFU_THREAD_PRIORITY, 0, 500); // disable DFU if the system is running correctly
 
 static void power_thread(void);
-K_THREAD_DEFINE(power_thread_id, 1024, power_thread, NULL, NULL, NULL, 6, 0, 0);
+K_THREAD_DEFINE(power_thread_id, 1024, power_thread, NULL, NULL, NULL, POWER_THREAD_PRIORITY, 0, 0);
 
 #define ZEPHYR_USER_NODE DT_PATH(zephyr_user)
 
@@ -70,6 +76,28 @@ static const struct gpio_dt_spec ldo_en = GPIO_DT_SPEC_GET(ZEPHYR_USER_NODE, ldo
 #endif
 
 #define ADAFRUIT_BOOTLOADER CONFIG_BUILD_OUTPUT_UF2
+
+static void sys_disconnect_interface_pins(void)
+{
+	// interface pins are disconnected according to devicetree, so only need to disconnect any cs pins
+	// int pin already configured by power off
+#if DT_SPI_DEV_HAS_CS_GPIOS(DT_NODELABEL(imu_spi))
+	uint32_t imu_cs_gpios = DT_SPI_DEV_CS_GPIOS_PIN(DT_NODELABEL(imu_spi));
+	LOG_INF("IMU CS GPIO pin: %u", imu_cs_gpios);
+	nrf_gpio_cfg_default(imu_cs_gpios);
+	LOG_INF("Disconnected IMU CS GPIO");
+#endif
+#if DT_SPI_DEV_HAS_CS_GPIOS(DT_NODELABEL(mag_spi))
+	uint32_t mag_cs_gpios = DT_SPI_DEV_CS_GPIOS_PIN(DT_NODELABEL(mag_spi)));
+	LOG_INF("Magnetometer CS GPIO pin: %u", mag_cs_gpios);
+	nrf_gpio_cfg_default(mag_cs_gpios);
+	LOG_INF("Disconnected Magnetometer CS GPIO");
+#endif
+/*
+	TODO: for promicro, leaving ext_vcc on draws ~50uA, disconnect works, pulldown may be more reliable
+	what to do about boards that use ext_vcc? it is not expected to leave on during WOM
+*/
+}
 
 void sys_interface_suspend(void)
 {
@@ -123,8 +151,11 @@ void sys_interface_resume(void)
 
 static void configure_system_off(void)
 {
-	// TODO: not calling suspend here, because sensor can call it and stop the system from shutting down since it suspended itself
-//	main_imu_suspend(); // TODO: when the thread is suspended, its possibly suspending in the middle of an i2c transaction and this is bad. Instead sensor should be suspended at a different time
+	if (get_status(SYS_STATUS_SENSOR_ERROR))
+		LOG_WRN("Entering new power state while sensor error is raised");
+	if (get_status(SYS_STATUS_SYSTEM_ERROR))
+		LOG_WRN("Entering new power state while system error is raised");
+	main_imu_suspend();
 	sensor_shutdown();
 	set_led(SYS_LED_PATTERN_OFF_FORCE, SYS_LED_PRIORITY_HIGHEST);
 	float actual_clock_rate;
@@ -177,7 +208,40 @@ static void wait_for_logging(void)
 static int64_t system_off_timeout = 0;
 #endif
 
-void sys_request_WOM(bool force) // TODO: if IMU interrupt does not exist what does the system do?
+void sys_request_WOM(bool force, bool immediate)
+{
+	if (immediate)
+	{
+		sys_WOM(force);
+		return;
+	}
+	if (force)
+		sys_power_state_request(2);
+	else
+		sys_power_state_request(1);
+}
+
+void sys_request_system_off(bool immediate)
+{
+	if (immediate)
+	{
+		sys_system_off();
+		return;
+	}
+	sys_power_state_request(3);
+}
+
+void sys_request_system_reboot(bool immediate)
+{
+	if (immediate)
+	{
+		sys_system_reboot();
+		return;
+	}
+	sys_power_state_request(4);
+}
+
+static void sys_WOM(bool force) // TODO: if IMU interrupt does not exist what does the system do?
 {
 	LOG_INF("IMU wake up requested");
 #if IMU_INT_EXISTS
@@ -192,12 +256,12 @@ void sys_request_WOM(bool force) // TODO: if IMU interrupt does not exist what d
 			return; // not timed out yet, skip system off
 		}
 		LOG_INF("ESB/status ready timed out");
-		// this may mean the system never enters system off if sys_request_WOM is not called again after the timeout
+		// TODO: this may mean the system never enters system off if sys_request_WOM is not called again after the timeout
 	}
 #endif
 	configure_system_off(); // Common subsystem shutdown and prepare sense pins
 	sensor_retained_write();
-#if WOM_USE_DCDC // In case DCDC is more efficient in the 10-100uA range
+#if WOM_USE_DCDC // In case DCDC is more efficient in the ~10-100uA range
 	set_regulator(SYS_REGULATOR_DCDC); // Make sure DCDC is selected
 #else
 	set_regulator(SYS_REGULATOR_LDO); // Switch to LDO
@@ -225,11 +289,9 @@ void sys_request_WOM(bool force) // TODO: if IMU interrupt does not exist what d
 #endif
 }
 
-void sys_request_system_off(void) // TODO: add timeout
+static void sys_system_off(void) // TODO: add timeout
 {
 	LOG_INF("System off requested");
-	// TODO: fails, its possible that it is getting stuck at main_imu_suspend
-	main_imu_suspend(); // TODO: should be a common shutdown step
 	configure_system_off(); // Common subsystem shutdown and prepare sense pins
 	// Clear sensor addresses
 	sensor_scan_clear();
@@ -237,6 +299,15 @@ void sys_request_system_off(void) // TODO: add timeout
 //	sensor_retained_write();
 	set_regulator(SYS_REGULATOR_LDO); // Switch to LDO
 	// Set system off
+#if IMU_INT_EXISTS
+	// Configure interrupt pin as it is not used
+	uint32_t int0_gpios = NRF_DT_GPIOS_TO_PSEL(ZEPHYR_USER_NODE, int0_gpios);
+	LOG_INF("Wake up GPIO pin: %u", int0_gpios);
+	nrf_gpio_cfg(int0_gpios, NRF_GPIO_PIN_DIR_INPUT, NRF_GPIO_PIN_INPUT_DISCONNECT, NRF_GPIO_PIN_PULLDOWN, NRF_GPIO_PIN_S0S1, NRF_GPIO_PIN_NOSENSE);
+	LOG_INF("Disconnected IMU wake up GPIO");
+#endif
+	// Disconnect remaining interface pins // TODO: only an improvement during shutdown? causes higher usage in WOM
+	sys_disconnect_interface_pins();
 	LOG_INF("Powering off nRF");
 	sys_update_battery_tracker(current_battery_pptt, device_plugged);
 //	retained_update();
@@ -247,7 +318,7 @@ void sys_request_system_off(void) // TODO: add timeout
 	sys_poweroff();
 }
 
-void sys_request_system_reboot(void) // TODO: add timeout
+static void sys_system_reboot(void) // TODO: add timeout
 {
 	LOG_INF("System reboot requested");
 	configure_system_off(); // Common subsystem shutdown and prepare sense pins
@@ -261,6 +332,27 @@ void sys_request_system_reboot(void) // TODO: add timeout
 	(*dbl_reset_mem) = DFU_DBL_RESET_APP; // Skip DFU
 #endif
 	sys_reboot(SYS_REBOOT_COLD);
+}
+
+static int sys_power_state_request(int id)
+{
+	static int requested = 0;
+	switch (id)
+	{
+	case -1:
+		requested = 0;
+		return 0;
+	case 0:
+		return requested;
+	default:
+		if (requested != 0)
+		{
+			LOG_ERR("System is already entering a new power state");
+			return -1;
+		}
+		requested = id;
+		return 0;
+	}
 }
 
 bool vin_read(void) // blocking
@@ -277,6 +369,69 @@ static void disable_DFU_thread(void)
 #endif
 }
 
+static void update_battery(int16_t battery_pptt)
+{
+	// Plugged state will cause a sudden change in SOC >10%, so reset the sample array
+	if (average_pptt >= 0 && NRFX_ABS(battery_pptt - average_pptt) > 1000)
+	{
+		LOG_INF("Change to battery SOC: %5.2f%% -> %5.2f%%", (double)average_pptt / 100.0, (double)battery_pptt / 100.0);
+		memset(last_pptt, -1, sizeof(last_pptt)); // reset array
+		samples = 1;
+	}
+
+	// Initalize sorted array
+	int16_t sorted_pptt[BATTERY_SAMPLES];
+	memcpy(sorted_pptt, last_pptt, sizeof(last_pptt));
+	sorted_pptt[BATTERY_SAMPLES - 1] = battery_pptt;
+
+	// Now add the last reading to the sample array
+	last_pptt[last_pptt_index] = battery_pptt;
+	last_pptt_index++;
+	last_pptt_index %= BATTERY_SAMPLES - 1;
+
+	// Sort sample array
+	for (int i = 1; i < BATTERY_SAMPLES; i++)
+	{
+		int16_t key = sorted_pptt[i];
+		int8_t j = i - 1;
+		while (j >= 0 && sorted_pptt[j] > key)
+		{
+			sorted_pptt[j + 1] = sorted_pptt[j];
+			j = j - 1;
+		}
+		sorted_pptt[j + 1] = key;
+	}
+
+	// Average across median 75% of samples
+	average_pptt = 0;
+	uint8_t valid_samples = 0;
+	for (uint8_t i = BATTERY_SAMPLES - (samples - samples / 8); i < (BATTERY_SAMPLES - samples / 8); i++)
+	{
+		if (sorted_pptt[i] != -1)
+		{
+			average_pptt += sorted_pptt[i];
+			valid_samples++;
+		}
+	}
+	if (valid_samples > 0)
+		average_pptt /= valid_samples;
+	else
+		average_pptt = battery_pptt;
+
+	// Store the average battery level with hysteresis (Effectively 100-10000 -> 1-100%)
+	if (average_pptt + 100 < hysteresis_pptt) // Lower bound -100pptt
+		hysteresis_pptt = average_pptt + 100;
+	else if (average_pptt > hysteresis_pptt) // Upper bound +0pptt
+		hysteresis_pptt = average_pptt;
+
+	// 0% to battery tracker will reset it, as >1% to 0% is invalid change
+	// Instead, remap 1-100 to 0-100
+	current_battery_pptt = (hysteresis_pptt - 100) * 100 / 99;
+}
+
+// TODO: this thread is handling reading charging state, battery state, dock state, and setting status/led
+// TODO: should be separated to be more clear in its function?
+// TODO: call into other thread for handling the system state
 static void power_thread(void)
 {
 	while (1)
@@ -285,6 +440,26 @@ static void power_thread(void)
 		const struct device *const uart = DEVICE_DT_GET(DT_NODELABEL(uart0));
 		pm_device_action_run(uart, PM_DEVICE_ACTION_SUSPEND);
 #endif
+		int requested = sys_power_state_request(0);
+		switch (requested)
+		{
+		case 1:
+			sys_WOM(false);
+			break;
+		case 2:
+			sys_WOM(true);
+			break;
+		case 3:
+			sys_system_off();
+			break;
+		case 4:
+			sys_system_reboot();
+			break;
+		default:
+			break;
+		}
+		sys_power_state_request(-1); // clear request
+
 		bool docked = dock_read();
 		bool charging = chg_read();
 		bool charged = stby_read();
@@ -342,70 +517,16 @@ static void power_thread(void)
 				LOG_WRN("Discharged battery");
 				sys_update_battery_tracker(0, device_plugged);
 			}
-			sys_request_system_off();
+			sys_request_system_off(true);
 		}
 
-		if (battery_available && !battery_low && battery_pptt < 1000)
+		// will update average_pptt, and current_battery_pptt
+		update_battery(battery_pptt);
+
+		if (battery_available && !battery_low && current_battery_pptt < 1000)
 			battery_low = true;
-		else if (!battery_available || (battery_low && battery_pptt > 1500)) // hysteresis
+		else if (!battery_available || (battery_low && current_battery_pptt > 1000)) // hysteresis alrerady provided
 			battery_low = false;
-
-		// Plugged state will cause a sudden change in SOC >10%, so reset the sample array
-		if (average_pptt >= 0 && NRFX_ABS(battery_pptt - average_pptt) > 1000)
-		{
-			LOG_INF("Change to battery SOC: %5.2f%% -> %5.2f%%", (double)average_pptt / 100.0, (double)battery_pptt / 100.0);
-			memset(last_pptt, -1, sizeof(last_pptt)); // reset array
-			samples = 1;
-		}
-
-		// Initalize sorted array
-		int16_t sorted_pptt[BATTERY_SAMPLES];
-		memcpy(sorted_pptt, last_pptt, sizeof(last_pptt));
-		sorted_pptt[BATTERY_SAMPLES - 1] = battery_pptt;
-
-		// Now add the last reading to the sample array
-		last_pptt[last_pptt_index] = battery_pptt;
-		last_pptt_index++;
-		last_pptt_index %= BATTERY_SAMPLES - 1;
-
-		// Sort sample array
-		for (int i = 1; i < BATTERY_SAMPLES; i++)
-		{
-			int16_t key = sorted_pptt[i];
-			int8_t j = i - 1;
-			while (j >= 0 && sorted_pptt[j] > key)
-			{
-				sorted_pptt[j + 1] = sorted_pptt[j];
-				j = j - 1;
-			}
-			sorted_pptt[j + 1] = key;
-		}
-
-		// Average across median 75% of samples
-		average_pptt = 0;
-		uint8_t valid_samples = 0;
-		for (uint8_t i = BATTERY_SAMPLES - (samples - samples / 8); i < (BATTERY_SAMPLES - samples / 8); i++)
-		{
-			if (sorted_pptt[i] != -1)
-			{
-				average_pptt += sorted_pptt[i];
-				valid_samples++;
-			}
-		}
-		if (valid_samples > 0)
-			average_pptt /= valid_samples;
-		else
-			average_pptt = battery_pptt;
-
-		// Store the average battery level with hysteresis (Effectively 100-10000 -> 1-100%)
-		if (average_pptt + 100 < hysteresis_pptt) // Lower bound -100pptt
-			hysteresis_pptt = average_pptt + 100;
-		else if (average_pptt > hysteresis_pptt) // Upper bound +0pptt
-			hysteresis_pptt = average_pptt;
-
-		// 0% to battery tracker will reset it, as >1% to 0% is invalid change
-		// Instead, remap 1-100 to 0-100
-		current_battery_pptt = (hysteresis_pptt - 100) * 100 / 99;
 
 		sys_update_battery_tracker_voltage(battery_mV, device_plugged);
 		if (samples == BATTERY_SAMPLES || device_plugged)

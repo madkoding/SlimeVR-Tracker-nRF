@@ -26,18 +26,7 @@ LOG_MODULE_REGISTER(system, LOG_LEVEL_INF);
 					 gpios)  // Alternate button if available to use as "reset key"
 #define BUTTON_EXISTS true
 static void button_thread(void);
-K_THREAD_DEFINE(
-	button_thread_id,
-	1024,
-	button_thread,
-	NULL,
-	NULL,
-	NULL,
-	6,
-	0,
-	0
-);  // TODO: stack increased because of reboot request (to 512) and sensor scan (to
-	// 1024)
+K_THREAD_DEFINE(button_thread_id, 256, button_thread, NULL, NULL, NULL, BUTTON_THREAD_PRIORITY, 0, 0);
 #else
 #pragma message "Button GPIO does not exist"
 #endif
@@ -197,11 +186,8 @@ static int sys_retained_init(void) {
 		sys_read(MAIN_GYRO_BIAS_ID, &retained->gyroBias, sizeof(retained->gyroBias));
 		sys_read(MAIN_MAG_BIAS_ID, &retained->magBAinv, sizeof(retained->magBAinv));
 		sys_read(MAIN_ACC_6_BIAS_ID, &retained->accBAinv, sizeof(retained->accBAinv));
-		sys_read(
-			BATT_STATS_CURVE_ID,
-			&retained->battery_pptt_curve,
-			sizeof(retained->battery_pptt_curve)
-		);
+		sys_read(BATT_STATS_CURVE_ID, &retained->battery_pptt_curve, sizeof(retained->battery_pptt_curve));
+		sys_read(SETTINGS_ID, &retained->settings, sizeof(retained->settings));
 		retained_update();
 	} else {
 		LOG_INF("Validated RAM");
@@ -391,11 +377,9 @@ static void button_thread(void) {
 		if (last_press && k_uptime_get() - last_press > 1000) {
 			LOG_INF("Button was pressed %d times", num_presses);
 			last_press = 0;
-			if (num_presses == 1) {
-				sys_request_system_reboot();
-			}
-#if CONFIG_USER_EXTRA_ACTIONS  // TODO: extra actions are default until server can send
-							   // commands to trackers
+			if (num_presses == 1)
+				sys_request_system_reboot(false);
+#if CONFIG_USER_EXTRA_ACTIONS // TODO: extra actions are default until server can send commands to trackers
 			sys_reset_mode(num_presses - 1);
 #endif
 			num_presses = 0;
@@ -491,9 +475,9 @@ int sys_user_shutdown(void) {
 		set_led(SYS_LED_PATTERN_OFF_FORCE, SYS_LED_PRIORITY_HIGHEST);
 	}
 #if USER_SHUTDOWN_ENABLED
-	sys_request_system_off();
+	sys_request_system_off(false);
 #else
-	sys_request_system_reboot();
+	sys_request_system_reboot(false);
 #endif
 	return 0;
 }
@@ -515,8 +499,8 @@ void sys_reset_mode(uint8_t mode) {
 		case 4:  // Reset mode DFU
 			LOG_INF("DFU requested");
 #if ADAFRUIT_BOOTLOADER
-			NRF_POWER->GPREGRET = 0x57;  // DFU_MAGIC_UF2_RESET
-			sys_request_system_reboot();
+		NRF_POWER->GPREGRET = 0x57; // DFU_MAGIC_UF2_RESET
+		sys_request_system_reboot(false);
 #endif
 #if NRF5_BOOTLOADER
 			gpio_pin_configure(gpio_dev, 19, GPIO_OUTPUT | GPIO_OUTPUT_INIT_LOW);
