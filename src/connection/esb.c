@@ -238,8 +238,8 @@ int esb_initialize(bool tx)
 		config.bitrate = ESB_BITRATE_1MBPS;
 		config.crc = ESB_CRC_16BIT;
 		config.tx_output_power = CONFIG_RADIO_TX_POWER;
-		// config.retransmit_delay = 600;
-		//config.retransmit_count = 0;
+		config.retransmit_delay = 1000;
+		config.retransmit_count = 5;
 		//config.tx_mode = ESB_TXMODE_MANUAL;
 		// config.payload_length = 32;
 		config.selective_auto_ack = true; // TODO: while pairing, should be set to false
@@ -253,8 +253,8 @@ int esb_initialize(bool tx)
 		config.bitrate = ESB_BITRATE_1MBPS;
 		config.crc = ESB_CRC_16BIT;
 		config.tx_output_power = CONFIG_RADIO_TX_POWER;
-		// config.retransmit_delay = 600;
-		// config.retransmit_count = 3;
+		config.retransmit_delay = 1000;
+		config.retransmit_count = 5;
 		// config.tx_mode = ESB_TXMODE_AUTO;
 		// config.payload_length = 32;
 		config.selective_auto_ack = true;
@@ -430,7 +430,7 @@ void esb_write(uint8_t *data)
 	if (!esb_initialized || !esb_paired)
 		return;
 	if (!clock_status)
-		clocks_start(); 
+		clocks_start();
 #if defined(NRF54L15_XXAA) // TODO: esb halts with ack and tx fail
 	tx_payload.noack = true;
 #else
