@@ -238,12 +238,12 @@ int esb_initialize(bool tx)
 		config.bitrate = ESB_BITRATE_1MBPS;
 		config.crc = ESB_CRC_16BIT;
 		config.tx_output_power = CONFIG_RADIO_TX_POWER;
-		config.retransmit_delay = 1000;
-		config.retransmit_count = 5;
+		config.retransmit_delay = 200;
+		config.retransmit_count = 2;
 		//config.tx_mode = ESB_TXMODE_MANUAL;
 		// config.payload_length = 32;
-		config.selective_auto_ack = true; // TODO: while pairing, should be set to false
-//		config.use_fast_ramp_up = true;
+		config.selective_auto_ack = false; // TODO: while pairing, should be set to false
+		config.use_fast_ramp_up = true;
 	}
 	else
 	{
@@ -253,12 +253,12 @@ int esb_initialize(bool tx)
 		config.bitrate = ESB_BITRATE_1MBPS;
 		config.crc = ESB_CRC_16BIT;
 		config.tx_output_power = CONFIG_RADIO_TX_POWER;
-		config.retransmit_delay = 1000;
-		config.retransmit_count = 5;
+		config.retransmit_delay = 200;
+		config.retransmit_count = 2;
 		// config.tx_mode = ESB_TXMODE_AUTO;
 		// config.payload_length = 32;
-		config.selective_auto_ack = true;
-//		config.use_fast_ramp_up = true;
+		config.selective_auto_ack = false;
+		config.use_fast_ramp_up = true;
 	}
 
 	err = esb_init(&config);

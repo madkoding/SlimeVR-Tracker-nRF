@@ -28,6 +28,8 @@
 
 #include <zephyr/kernel.h>
 
+#define CONNECTION_QUAT_INTERVAL_MS 33  // ~30 Hz rate limit for quaternion packets
+
 static uint8_t tracker_id, batt, batt_v, sensor_temp, imu_id, mag_id, tracker_status;
 static uint8_t tracker_svr_status = SVR_STATUS_OK;
 static float sensor_q[4], sensor_a[3], sensor_m[3];
@@ -279,45 +281,47 @@ void connection_thread(void)
 	// TODO: checking for connection_update events from sensor_loop, here we will time and send them out
 	while (1)
 	{
+		int64_t now = k_uptime_get();
+		
 		if (last_data_time != 0) // have valid data
 		{
 			last_data_time = 0;
 			esb_write(data_buffer);
 		}
 		// mag is higher priority (skip accel, quat is full precision)
-		else if (mag_update_time && k_uptime_get() - last_mag_time > 200)
+		else if (mag_update_time && now - last_mag_time > 200)
 		{
 			mag_update_time = 0; // data has been sent
-			last_mag_time = k_uptime_get();
+			last_mag_time = now;
 			connection_write_packet_4();
 			continue;
 		}
-		// if time for info and precise quat not needed
-		else if (quat_update_time && !send_precise_quat && k_uptime_get() - last_info_time > 100)
+		// if time for info and precise quat not needed (rate limited to ~30 Hz)
+		else if (quat_update_time && !send_precise_quat && now - last_info_time > 100 && now - last_quat_time >= CONNECTION_QUAT_INTERVAL_MS)
 		{
 			quat_update_time = 0;
-			last_quat_time = k_uptime_get();
-			last_info_time = k_uptime_get();
+			last_quat_time = now;
+			last_info_time = now;
 			connection_write_packet_2();
 			continue;
 		}
-		// send quat otherwise
-		else if (quat_update_time)
+		// send quat otherwise (rate limited to ~30 Hz)
+		else if (quat_update_time && now - last_quat_time >= CONNECTION_QUAT_INTERVAL_MS)
 		{
 			quat_update_time = 0;
-			last_quat_time = k_uptime_get();
+			last_quat_time = now;
 			connection_write_packet_1();
 			continue;
 		}
-		else if (k_uptime_get() - last_info_time > 100)
+		else if (now - last_info_time > 100)
 		{
-			last_info_time = k_uptime_get();
+			last_info_time = now;
 			connection_write_packet_0();
 			continue;
 		}
-		else if (k_uptime_get() - last_status_time > 1000)
+		else if (now - last_status_time > 1000)
 		{
-			last_status_time = k_uptime_get();
+			last_status_time = now;
 			connection_write_packet_3();
 			continue;
 		}
