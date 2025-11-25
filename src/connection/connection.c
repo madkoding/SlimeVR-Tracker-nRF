@@ -28,6 +28,8 @@
 
 #include <zephyr/kernel.h>
 
+#define CONNECTION_QUAT_INTERVAL_MS 20  // 50 Hz rate limit for quaternion packets
+
 static uint8_t tracker_id, batt, batt_v, sensor_temp, imu_id, mag_id, tracker_status;
 static uint8_t tracker_svr_status = SVR_STATUS_OK;
 static float sensor_q[4], sensor_a[3], sensor_m[3];
@@ -280,9 +282,13 @@ void connection_thread(void)
 	// Jitter aleatorio basado en tracker_id para desincronizar transmisiones y evitar colisiones
 	uint8_t jitter_offset = (tracker_id * 1234567) % 10; // 0-9 ms pseudoaleatorio por tracker
 	
+	// Aplicar delay inicial basado en jitter para desincronizar desde el inicio
+	k_msleep(jitter_offset);
+	
 	while (1)
 	{
 		int64_t now = k_uptime_get();
+		bool quat_ready = quat_update_time && (now - last_quat_time >= CONNECTION_QUAT_INTERVAL_MS);
 		
 		if (last_data_time != 0) // have valid data
 		{
@@ -297,8 +303,8 @@ void connection_thread(void)
 			connection_write_packet_4();
 			continue;
 		}
-		// if time for info and precise quat not needed
-		else if (quat_update_time && !send_precise_quat && now - last_info_time > 100)
+		// if time for info and precise quat not needed (rate limited to 50 Hz)
+		else if (quat_ready && !send_precise_quat && now - last_info_time > 100)
 		{
 			quat_update_time = 0;
 			last_quat_time = now;
@@ -306,8 +312,8 @@ void connection_thread(void)
 			connection_write_packet_2();
 			continue;
 		}
-		// send quat otherwise
-		else if (quat_update_time)
+		// send quat otherwise (rate limited to 50 Hz)
+		else if (quat_ready)
 		{
 			quat_update_time = 0;
 			last_quat_time = now;
@@ -330,7 +336,7 @@ void connection_thread(void)
 		{
 			connection_clocks_request_stop();
 		}
-		// Aplicar jitter para desincronizar trackers
-		k_msleep(1 + (jitter_offset % 3)); // 1-3 ms con offset por tracker
+		// Delay constante para mantener timing sincronizado entre todos los paquetes
+		k_msleep(1);
 	}
 }
