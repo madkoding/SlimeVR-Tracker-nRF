@@ -32,6 +32,19 @@
 
 #include "esb.h"
 
+// Constantes de configuración ESB
+#define ESB_RETRANSMIT_DELAY_US     1000
+#define ESB_RETRANSMIT_COUNT        5
+#define ESB_DEINIT_DELAY_MS         10
+#define ESB_PAIR_TX_DELAY_MS        2
+#define ESB_PAIR_CYCLE_DELAY_MS     996
+#define ESB_PAIR_COMPLETE_DELAY_MS  1600
+#define ESB_THREAD_LOOP_TIMEOUT_MS  100
+#define CLOCK_FETCH_MAX_ATTEMPTS    10
+
+// Semáforo para despertar el thread ESB cuando hay eventos
+K_SEM_DEFINE(esb_event_sem, 0, 1);
+
 uint8_t last_reset = 0;
 //const nrfx_timer_t m_timer = NRFX_TIMER_INSTANCE(1);
 bool esb_state = false;
@@ -69,6 +82,7 @@ void event_handler(struct esb_evt const *event)
 		tx_errors = 0;
 		if (esb_paired)
 			clocks_stop();
+		k_sem_give(&esb_event_sem);
 		break;
 	case ESB_EVENT_TX_FAILED:
 		if (tx_errors < UINT32_MAX)
@@ -78,6 +92,7 @@ void event_handler(struct esb_evt const *event)
 		LOG_DBG("TX FAILED");
 		if (esb_paired)
 			clocks_stop();
+		k_sem_give(&esb_event_sem);
 		break;
 	case ESB_EVENT_RX_RECEIVED:
 		// TODO: have to read rx until -ENODATA (or -EACCES/-EINVAL)
@@ -143,7 +158,6 @@ int clocks_start(void)
 	int err;
 	int res;
 	struct onoff_client clk_cli;
-	int fetch_attempts = 0;
 
 	sys_notify_init_spinwait(&clk_cli.notify);
 
@@ -154,20 +168,24 @@ int clocks_start(void)
 		return err;
 	}
 
-	do
+	// Intentar obtener resultado con backoff
+	err = sys_notify_fetch_result(&clk_cli.notify, &res);
+	for (int attempt = 1; err && attempt <= CLOCK_FETCH_MAX_ATTEMPTS; attempt++)
 	{
-		k_usleep(100);
+		k_usleep(100 * attempt); // backoff: 100, 200, 300...
 		err = sys_notify_fetch_result(&clk_cli.notify, &res);
 		if (!err && res)
 		{
 			LOG_ERR("Clock could not be started: %d", res);
 			return res;
 		}
-		if (err && ++fetch_attempts > 10) {
-			LOG_WRN_ONCE("Unable to fetch Clock request result: %d", err);
-			return err;
-		}
-	} while (err);
+	}
+
+	if (err)
+	{
+		LOG_WRN_ONCE("Unable to fetch Clock request result: %d", err);
+		return err;
+	}
 
 #if defined(NRF54L15_XXAA)
 	/* MLTPAN-20 */
@@ -230,36 +248,17 @@ int esb_initialize(bool tx)
 
 	struct esb_config config = ESB_DEFAULT_CONFIG;
 
-	if (tx)
-	{
-		// config.protocol = ESB_PROTOCOL_ESB_DPL;
-		// config.mode = ESB_MODE_PTX;
-		config.event_handler = event_handler;
-		config.bitrate = ESB_BITRATE_1MBPS;
-		config.crc = ESB_CRC_16BIT;
-		config.tx_output_power = CONFIG_RADIO_TX_POWER;
-		config.retransmit_delay = 1200;
-		config.retransmit_count = 3;
-		//config.tx_mode = ESB_TXMODE_MANUAL;
-		// config.payload_length = 32;
-		config.selective_auto_ack = true; // TODO: while pairing, should be set to false
-		config.use_fast_ramp_up = false;
-	}
-	else
-	{
-		// config.protocol = ESB_PROTOCOL_ESB_DPL;
+	// Configuración común para TX y RX
+	config.event_handler = event_handler;
+	config.bitrate = ESB_BITRATE_1MBPS;
+	config.crc = ESB_CRC_16BIT;
+	config.tx_output_power = CONFIG_RADIO_TX_POWER;
+	config.retransmit_delay = ESB_RETRANSMIT_DELAY_US;
+	config.retransmit_count = ESB_RETRANSMIT_COUNT;
+	config.selective_auto_ack = true;
+
+	if (!tx)
 		config.mode = ESB_MODE_PRX;
-		config.event_handler = event_handler;
-		config.bitrate = ESB_BITRATE_1MBPS;
-		config.crc = ESB_CRC_16BIT;
-		config.tx_output_power = CONFIG_RADIO_TX_POWER;
-		config.retransmit_delay = 1200;
-		config.retransmit_count = 3;
-		// config.tx_mode = ESB_TXMODE_AUTO;
-		// config.payload_length = 32;
-		config.selective_auto_ack = true;
-		config.use_fast_ramp_up = false;
-	}
 
 	err = esb_init(&config);
 
@@ -288,7 +287,7 @@ void esb_deinitialize(void)
 	if (esb_initialized)
 	{
 		esb_initialized = false;
-		k_msleep(10); // wait for pending transmissions
+		k_msleep(ESB_DEINIT_DELAY_MS); // wait for pending transmissions
 		esb_disable();
 	}
 	esb_initialized = false;
@@ -381,21 +380,21 @@ void esb_pair(void)
 			tx_payload_pair.data[1] = 0; // send pairing request
 			esb_write_payload(&tx_payload_pair);
 			esb_start_tx();
-			k_msleep(2);
+			k_msleep(ESB_PAIR_TX_DELAY_MS);
 			tx_payload_pair.data[1] = 1; // receive ack data
 			esb_write_payload(&tx_payload_pair);
 			esb_start_tx();
-			k_msleep(2);
+			k_msleep(ESB_PAIR_TX_DELAY_MS);
 			tx_payload_pair.data[1] = 2; // "acknowledge" pairing from receiver
 			esb_write_payload(&tx_payload_pair);
 			esb_start_tx();
-			k_msleep(996);
+			k_msleep(ESB_PAIR_CYCLE_DELAY_MS);
 		}
 		set_led(SYS_LED_PATTERN_ONESHOT_COMPLETE, SYS_LED_PRIORITY_CONNECTION);
 		LOG_INF("Paired");
 		sys_write(PAIRED_ID, retained->paired_addr, paired_addr, sizeof(paired_addr)); // Write new address and tracker id
 		esb_deinitialize();
-		k_msleep(1600); // wait for led pattern
+		k_msleep(ESB_PAIR_COMPLETE_DELAY_MS); // wait for led pattern
 	}
 	LOG_INF("Tracker ID: %u", paired_addr[1]);
 	LOG_INF("Receiver address: %012llX", (*(uint64_t *)&retained->paired_addr[0] >> 16) & 0xFFFFFFFFFFFF);
@@ -487,6 +486,6 @@ static void esb_thread(void)
 		{
 			set_status(SYS_STATUS_CONNECTION_ERROR, false);
 		}
-		k_msleep(100);
+		k_sem_take(&esb_event_sem, K_MSEC(ESB_THREAD_LOOP_TIMEOUT_MS));
 	}
 }

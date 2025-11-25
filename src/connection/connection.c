@@ -28,7 +28,14 @@
 
 #include <zephyr/kernel.h>
 
-#define CONNECTION_QUAT_INTERVAL_MS 20  // 50 Hz rate limit for quaternion packets
+// Intervalos de tiempo para envío de paquetes (ms)
+#define MAG_INTERVAL_MS         200
+#define INFO_INTERVAL_MS        500   // Reducido para dar prioridad a quaterniones
+#define STATUS_INTERVAL_MS      1000
+#define DATA_READY_TIMEOUT_MS   10    // Timeout corto para respuesta rápida
+
+// Semáforo para despertar el thread cuando hay datos nuevos
+K_SEM_DEFINE(data_ready_sem, 0, 1);
 
 static uint8_t tracker_id, batt, batt_v, sensor_temp, imu_id, mag_id, tracker_status;
 static uint8_t tracker_svr_status = SVR_STATUS_OK;
@@ -90,6 +97,7 @@ void connection_update_sensor_data(float *q, float *a, int64_t data_time)
 	memcpy(sensor_q, q, sizeof(sensor_q));
 	memcpy(sensor_a, a, sizeof(sensor_a));
 	quat_update_time = k_uptime_get();
+	k_sem_give(&data_ready_sem);
 }
 
 static int64_t mag_update_time = 0;
@@ -99,6 +107,7 @@ void connection_update_sensor_mag(float *m)
 {
 	memcpy(sensor_m, m, sizeof(sensor_m));
 	mag_update_time = k_uptime_get();
+	k_sem_give(&data_ready_sem);
 }
 
 void connection_update_sensor_temp(float temp)
@@ -186,7 +195,7 @@ void connection_write_packet_1() // full precision quat and accel
 	buf[1] = TO_FIXED_15(sensor_q[2]);
 	buf[2] = TO_FIXED_15(sensor_q[3]);
 	buf[3] = TO_FIXED_15(sensor_q[0]);
-	buf[4] = TO_FIXED_7(sensor_a[0]); // range is ±256m/s² or ±26.1g 
+	buf[4] = TO_FIXED_7(sensor_a[0]); // range is ±256m/s² or ±26.1g
 	buf[5] = TO_FIXED_7(sensor_a[1]);
 	buf[6] = TO_FIXED_7(sensor_a[2]);
 	memcpy(data_buffer, data, sizeof(data));
@@ -276,67 +285,83 @@ void connection_write_packet_4() // full precision quat and magnetometer
 static int64_t last_info_time = 0;
 static int64_t last_status_time = 0;
 
+// Delay antes de transmitir basado en tracker_id para evitar colisiones
+static inline void anti_collision_delay(void)
+{
+	// Cada tracker espera un tiempo diferente: 0-6ms máximo (para 10 trackers)
+	// Usando microsegundos para mayor precisión
+	uint16_t slot_delay_us = (tracker_id % 10) * 600;  // 0, 600, 1200... 5400µs
+	if (slot_delay_us > 0)
+		k_usleep(slot_delay_us);
+}
+
 void connection_thread(void)
 {
-	// TODO: checking for connection_update events from sensor_loop, here we will time and send them out
-	// Jitter aleatorio basado en tracker_id para desincronizar transmisiones y evitar colisiones
-	uint8_t jitter_offset = (tracker_id * 1234567) % 10; // 0-9 ms pseudoaleatorio por tracker
-	
-	// Aplicar delay inicial basado en jitter para desincronizar desde el inicio
-	k_msleep(jitter_offset);
-	
 	while (1)
 	{
+		// Esperar hasta que haya datos nuevos (timeout corto para respuesta rápida)
+		k_sem_take(&data_ready_sem, K_MSEC(DATA_READY_TIMEOUT_MS));
+
 		int64_t now = k_uptime_get();
-		bool quat_ready = quat_update_time && (now - last_quat_time >= CONNECTION_QUAT_INTERVAL_MS);
-		
-		if (last_data_time != 0) // have valid data
+
+		// PRIORIDAD 1: Datos pendientes del buffer (más alta)
+		if (last_data_time != 0)
 		{
 			last_data_time = 0;
+			anti_collision_delay();
 			esb_write(data_buffer);
+			continue;
 		}
-		// mag is higher priority (skip accel, quat is full precision)
-		else if (mag_update_time && now - last_mag_time > 200)
+
+		// PRIORIDAD 2: Quaterniones (datos del sensor)
+		if (quat_update_time)
 		{
-			mag_update_time = 0; // data has been sent
+			quat_update_time = 0;
+			last_quat_time = now;
+			anti_collision_delay();
+
+			// Enviar packet_2 (con info) solo cada INFO_INTERVAL_MS
+			if (!send_precise_quat && now - last_info_time > INFO_INTERVAL_MS)
+			{
+				last_info_time = now;
+				connection_write_packet_2();
+			}
+			else
+			{
+				connection_write_packet_1();
+			}
+			continue;
+		}
+
+		// PRIORIDAD 3: Magnetómetro (menos frecuente)
+		if (mag_update_time && now - last_mag_time > MAG_INTERVAL_MS)
+		{
+			mag_update_time = 0;
 			last_mag_time = now;
+			anti_collision_delay();
 			connection_write_packet_4();
 			continue;
 		}
-		// if time for info and precise quat not needed (rate limited to 50 Hz)
-		else if (quat_ready && !send_precise_quat && now - last_info_time > 100)
-		{
-			quat_update_time = 0;
-			last_quat_time = now;
-			last_info_time = now;
-			connection_write_packet_2();
-			continue;
-		}
-		// send quat otherwise (rate limited to 50 Hz)
-		else if (quat_ready)
-		{
-			quat_update_time = 0;
-			last_quat_time = now;
-			connection_write_packet_1();
-			continue;
-		}
-		else if (now - last_info_time > 100)
+
+		// PRIORIDAD 4: Info del dispositivo (baja prioridad)
+		if (now - last_info_time > INFO_INTERVAL_MS)
 		{
 			last_info_time = now;
+			anti_collision_delay();
 			connection_write_packet_0();
 			continue;
 		}
-		else if (now - last_status_time > 1000)
+
+		// PRIORIDAD 5: Status (muy baja prioridad)
+		if (now - last_status_time > STATUS_INTERVAL_MS)
 		{
 			last_status_time = now;
+			anti_collision_delay();
 			connection_write_packet_3();
 			continue;
 		}
-		else
-		{
-			connection_clocks_request_stop();
-		}
-		// Delay constante para mantener timing sincronizado entre todos los paquetes
-		k_msleep(1);
+
+		// Nada que hacer, apagar clocks para ahorrar energía
+		connection_clocks_request_stop();
 	}
 }
