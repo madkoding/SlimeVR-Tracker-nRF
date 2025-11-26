@@ -69,17 +69,17 @@ K_SEM_DEFINE(esb_event_sem, 0, 1);
 static bool esb_initialized = false;
 static bool esb_paired = false;
 static bool clock_status = false;
-static bool timer_state = false;
-static bool send_data = false;
+bool timer_state = false;
+bool send_data = false;
 
 // Error tracking
 static uint32_t tx_errors = 0;
 static int64_t last_tx_success = 0;
 
 // Timer/clock synchronization
-static uint8_t last_reset = 0;
-static uint16_t led_clock = 0;
-static uint32_t led_clock_offset = 0;
+uint8_t last_reset = 0;
+uint16_t led_clock = 0;
+uint32_t led_clock_offset = 0;
 
 // ESB payload structures
 static struct esb_payload rx_payload;
